@@ -3,9 +3,10 @@
 
 import numpy as np
 import torch.multiprocessing as mp
-from parameters import parse_args
+from src.parameters import parse_args
 from pathlib import Path
-from train import *
+from src.train import *
+import os
 
 if __name__ == "__main__":
     os.environ['MASTER_ADDR'] = 'localhost'
