@@ -1,6 +1,10 @@
 # Project
 
-## Get started
+## Getting Started
+Basic setup.
+```bash
+pip install -r requirements.txt
+```
 Run.
 ```python
 python run_example.py --news_attributes title abstract body --bus_connection True --content_refinement True --max_keyword_freq 100  --drop_encoder_ratio 1 --max_step_in_cache 20  --bucket_num 2
