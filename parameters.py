@@ -10,7 +10,7 @@ def parse_args():
     parser = argparse.ArgumentParser()
 
     #speedy
-    parser.add_argument("--bucket_num", help="The number of buffer buckets", type=int, default=2)
+    parser.add_argument("--bucket_num", help="The number of buffer buckets", type=int, default=1)
     parser.add_argument("--cache_num", help="How many news representations can be stored in the cache", type=int, default=1250000)
     parser.add_argument("--drop_encoder_ratio", help="", type=float, default=1)
     parser.add_argument("--max_step_in_cache", type=int, default=20)
@@ -20,7 +20,7 @@ def parse_args():
 
     parser.add_argument("--mode",
                         type=str,
-                        default="train_test",
+                        default="train",
                         choices=['train', 'test', 'train_test'])
 
     #data

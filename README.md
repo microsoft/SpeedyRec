@@ -1,5 +1,11 @@
 # Project
 
+## Get started
+Run.
+```python
+python run_example.py --news_attributes title abstract body --bus_connection True --content_refinement True --max_keyword_freq 100  --drop_encoder_ratio 1 --max_step_in_cache 20  --bucket_num 2
+```
+
 > This repo has been populated by an initial template to help get you started. Please
 > make sure to update the content to build a great experience for community-building.
 
