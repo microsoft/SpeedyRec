@@ -16,9 +16,9 @@ import math
 
 class DataLoaderTrain(IterableDataset):
     '''
-    dataLoader used for training. producer-consumer
-    - Dynamic Batching:
-    - Bi-Mode Encoding:
+    DataLoader used for training with producer-consumer architecture.
+    - Dynamic Batching
+    - Generate batch for two-stage encoding
     '''
     def __init__(self,
                  args,
@@ -28,7 +28,9 @@ class DataLoaderTrain(IterableDataset):
                  end,
                  local_rank,
                  world_size,
-                 news_features):
+                 news_features,
+                 enable_prefetch=True,
+                 enable_prefetch_stream=False):
         '''
         Args:
             args: parameters
@@ -48,28 +50,58 @@ class DataLoaderTrain(IterableDataset):
         self.local_rank = local_rank
         self.world_size = world_size
         self.news_features = news_features
+        self.enable_prefetch = enable_prefetch
+        self.enable_prefetch_stream = enable_prefetch_stream
         self.global_step = 0
 
     def __iter__(self):
         """Implement IterableDataset method to provide data iterator."""
-        self.start_async()
+        if self.enable_prefetch:
+            self.start_async()
+        else:
+            self.outputs = self.dynamic_batch().__iter__()
         return self
 
+    def start_async(self):
+        logging.info('start async...')
+        self.aval_count = 0
+        self.end.value = False
+        self.prefetch_step[self.local_rank] = 0
+        self.outputs = Queue(10)
+        self.pool = ThreadPoolExecutor(1)
+        self.pool.submit(self._produce)
+
     def __next__(self):
-        if self.end.value and self.aval_count == 0:
-            raise StopIteration
-        next_batch = self.outputs.get()
-        self.outputs.task_done()
-        self.aval_count -= 1
-        return next_batch
+        if self.enable_prefetch:
+            if self.end.value and self.aval_count == 0:
+                raise StopIteration
+            next_batch = self.outputs.get()
+            self.outputs.task_done()
+            self.aval_count -= 1
+            return next_batch
+        else:
+            return self.outputs.__next__()
 
     def _produce(self):
+        for address_cache,update_cache,batch in self.dynamic_batch():
+            self.outputs.put((address_cache, update_cache, batch))
+            self.aval_count += 1
+        self.pool.shutdown(wait=False)
+        raise
+
+    def dynamic_batch(self):
+        '''
+        Each training case will be routed to a bucket based on its max sequence length.
+        The buckets will be checked before each insert-in: that whether it is filled.
+        Once a bucket is filled, the filled transactions will be generated as a mini-batch and appended to the mini-batch queue.
+        '''
         # Buffer Buckets
-        blocks = [[]for x in range(self.args.block_num)]   #hitory_id, neg_id
-        block_encode_set = [set() for x in range(self.args.block_num)]
-        block_cache_set = [set() for x in range(self.args.block_num)]
-        block_max_length = [0 for x in range(self.args.block_num)]
-        block_space = [(self.args.seg_length // self.args.block_num) * i for i in range(self.args.block_num)]
+        logging.info('init bucket')
+        blocks = [[]for x in range(self.args.bucket_num)]   #hitory_id, neg_id
+        block_encode_set = [set() for x in range(self.args.bucket_num)]
+        block_cache_set = [set() for x in range(self.args.bucket_num)]
+        block_max_length = [0 for x in range(self.args.bucket_num)]
+        block_space = [(self.args.seg_length // self.args.bucket_num) * i for i in range(self.args.bucket_num)]
 
         self.use_cache = False
 
@@ -77,26 +109,24 @@ class DataLoaderTrain(IterableDataset):
             torch.cuda.set_device(self.local_rank)
 
         self.sampler = StreamSamplerTrain(data_files=self.data_files)
-        if self.args.enable_prefetch_stream:
+        if self.enable_prefetch_stream:
             self.sampler_batch = self.sampler
         else:
             self.sampler_batch = self.sampler._generate_batch()
 
-        cnt = 0
         for one_user in self.sampler_batch:
-            cnt += 1
             news_set, history, negs = self._process(one_user)
             cache_set, encode_set = self.split_news_set(news_set, self.use_cache)
+            max_len = 0
             if len(encode_set) > 0:
                 max_len = max([len(self.news_features[nid][0][0]) if nid in self.news_features else 0 for nid in encode_set])
-            else:
-                max_len = 0
-            for i in range(self.args.block_num-1,-1,-1):
+
+            for i in range(self.args.bucket_num-1,-1,-1):
                 if max_len > block_space[i]:
                     if (max(block_max_length[i],max_len)+self.args.bus_num)*len(block_encode_set[i] | encode_set)*self.args.seg_num > self.args.batch_size:
                         if len(block_encode_set[i]) == 0:
                             break
-                        address_cache,update_cache,batch = self.gen_batch(block_encode_set[i],block_cache_set[i],blocks[i],block_max_length[i],self.global_step)
+                        address_cache,update_cache,batch = self.gen_batch_for_two_stage(block_encode_set[i],block_cache_set[i],blocks[i],block_max_length[i],self.global_step)
 
                         self.prefetch_step[self.local_rank] += 1
                         self.synchronization()
@@ -104,10 +134,9 @@ class DataLoaderTrain(IterableDataset):
                             break
 
                         self.global_step += 1
-                        self.outputs.put((address_cache,update_cache,batch))
-                        self.aval_count += 1
-                        block_encode_set[i] = set();block_cache_set[i] = set();blocks[i]=[];block_max_length[i]=0
+                        yield address_cache,update_cache,batch
 
+                        block_encode_set[i] = set();block_cache_set[i] = set();blocks[i]=[];block_max_length[i]=0
                         self.update_use_cache()
 
                     block_max_length[i] = max(block_max_length[i],max_len)
@@ -116,8 +145,6 @@ class DataLoaderTrain(IterableDataset):
                     blocks[i].append((history,negs))
                     break
         self.end.value = True
-        self.pool.shutdown(wait=False)
-        raise
 
     def synchronization(self):
         while sum(self.prefetch_step) != self.prefetch_step[self.local_rank] * self.world_size:
@@ -133,6 +160,11 @@ class DataLoaderTrain(IterableDataset):
             self.use_cache = False
 
     def split_news_set(self,news_set,use_cache):
+        '''
+        For each news article, the dataloader will check the cache in the first place:
+        if there is a copy of news embedding in cache, it will outputs the index of news in the cache
+        otherwise, it will outputs the features of this news as imputs to news encoder.
+        '''
         if use_cache:
             cache_set = set()
             encode_set = set()
@@ -150,7 +182,10 @@ class DataLoaderTrain(IterableDataset):
             return set(), news_set
 
 
-    def gen_batch(self,encode_set,cache_set,data,max_len,global_step):
+    def gen_batch_for_two_stage(self,encode_set,cache_set,data,max_len,global_step):
+        '''
+        Once a mini-batch is presented, it will gather all of the news articles from different users.
+        '''
         news_index = {'MISS': 0}
         idx = 1
 
@@ -193,7 +228,6 @@ class DataLoaderTrain(IterableDataset):
             # update cache
             update_cache.append(self.news_idx_incache[n][0])
             self.news_idx_incache[n] = [self.news_idx_incache[n][0],global_step]
-
 
         batch_hist = []
         batch_negs = []
@@ -286,12 +320,7 @@ class DataLoaderTrain(IterableDataset):
         u_set = set(u_set)
         return u_set,clicked,negnews
 
-    def start_async(self):
-        self.aval_count = 0
-        self.end.value = False
-        self.outputs = Queue(10)
-        self.pool = ThreadPoolExecutor(1)
-        self.pool.submit(self._produce)
+
 
 
 class DataLoaderTest():

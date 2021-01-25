@@ -8,6 +8,8 @@ import numpy as np
 import argparse
 import re
 import os
+import torch.distributed as dist
+
 
 
 def word_tokenize(sent):
@@ -36,6 +38,52 @@ def setuplogging():
     formatter = logging.Formatter("[%(levelname)s %(asctime)s] %(message)s")
     handler.setFormatter(formatter)
     root.addHandler(handler)
+
+
+def init_process(rank, world_size):
+    # initialize the process group
+    dist.init_process_group("nccl", rank=rank, world_size=world_size,)
+    torch.cuda.set_device(rank)
+
+    # Explicitly setting seed to make sure that models created in two processes
+    # start from same random weights and biases.
+    torch.manual_seed(42)
+
+def cleanup_process():
+    dist.destroy_process_group()
+
+
+def init_config(args,Configclass):
+    config = Configclass.from_pretrained(
+        args.config_name if args.config_name else args.model_name_or_path,
+        output_hidden_states=True)
+
+    seg_num = 0
+    for name in args.news_attributes:
+        if name == 'title':
+            seg_num += 1
+        elif name == 'abstract':
+            seg_num += 1
+        elif name == 'body':
+            seg_num += args.body_seg_num
+    args.seg_num = seg_num
+
+    if seg_num>1 and args.bus_connection:
+        args.bus_num = seg_num
+    else:
+        args.bus_num = 0
+
+    config.bus_num = args.bus_num
+    config.hidden_size = args.word_embedding_dim
+    config.num_hidden_layers = args.bert_layer_hidden
+
+    return args,config
+
+
+def warmup_linear(args,step):
+    if step <= args.warmup_step:
+        return step/args.warmup_step
+    return max(1e-4,(args.schedule_step-step)/(args.schedule_step-args.warmup_step))
 
 
 def dump_args(args):

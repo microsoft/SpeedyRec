@@ -250,8 +250,13 @@ class UserEncoder(torch.nn.Module):
         self.att_fc2 = nn.Linear(args.user_query_vector_dim, 1)
 
 
-    def _process_news(self, vec, mask, pad_doc,
+    def _autoreg_user_modeling(self, vec, mask, pad_doc,
                       min_log_length=1):
+        '''
+        We propose autoregressive user modeling for more efficient utilization of user history,
+        where all of the news clicks about a user can be predicted at one-shot of news encoding.
+        For a click history of length L, this function generates L-1 user vectors for predicting the last L-1 clicks.
+        '''
 
         if self.args.add_pad:
             padding_doc = pad_doc.expand(vec.shape[0], self.args.news_dim).unsqueeze(1)
@@ -302,7 +307,7 @@ class UserEncoder(torch.nn.Module):
         Returns:
             (shape) batch_size, history_length - 1, news_dim
         """
-        log_vec = self._process_news(log_vec, log_mask, pad_embedding)
+        log_vec = self._autoreg_user_modeling(log_vec, log_mask, pad_embedding)
 
         return log_vec
 

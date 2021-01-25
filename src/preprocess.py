@@ -6,6 +6,7 @@ import os
 from multiprocessing import Process,Manager,cpu_count
 from nltk.corpus import stopwords
 from transformers import BertTokenizer
+from src.refinement import content_refinement
 
 def read_news(args):
     '''
@@ -20,23 +21,38 @@ def read_news(args):
     else:
         data_path = os.path.join(args.root_data_dir, 'processed_news_l{}.pkl'.format(args.seg_length))
 
-    if not os.path.exists(data_path):
-        mul_prepocess(args)
+    assert os.path.exists(data_path)
 
     with open(data_path, 'rb') as f:
         process_news = pickle.load(f)
     return process_news['news_features'], process_news['category'], process_news['subcategory']
 
+def check_preprocess_result(args):
+    if args.num_worker_preprocess == -1:
+        preprocess_world_size = (cpu_count())//2 - 1
+    else:
+        preprocess_world_size = args.num_worker_preprocess
+    assert preprocess_world_size>0
 
-def mul_prepocess(args):
+    if args.content_refinement:
+        data_path = os.path.join(args.root_data_dir, 'processed_news_l{}_refine.pkl'.format(args.seg_length))
+    else:
+        data_path = os.path.join(args.root_data_dir, 'processed_news_l{}.pkl'.format(args.seg_length))
+    if not os.path.exists(data_path):
+        if args.content_refinement and not os.path.exists(os.path.join(args.root_data_dir, '/refinement_k2={}.pkl'.format(args.k2_for_BM25))):
+            print('start content refinement')
+            content_refinement(args,preprocess_world_size)
+        mul_prepocess(args,preprocess_world_size)
+
+
+def mul_prepocess(args,world_size):
     '''
-    process DocFeatures by multi-process architecture
+    process DocFeatures with multi-process
     '''
     tokenizer = BertTokenizer.from_pretrained(
         args.tokenizer_name if args.tokenizer_name else args.model_name_or_path,
         do_lower_case=args.do_lower_case)
 
-    world_size = (cpu_count()) - 1
     manager = Manager()
     news_feature = manager.dict()
     categories = manager.dict()
@@ -92,13 +108,15 @@ def process_news(local_rank,
                  args,
                  tokenizer):
 
-    print(f'loading {os.path.join(data_path,"refinement.pkl")}')
-    with open(os.path.join(data_path,'refinement.pkl'), 'rb') as f:
-        news_keywords = pickle.load(f)
+    if args.content_refinement:
+        refine_path =  os.path.join(data_path, 'refinement_k2={}.pkl'.format(args.k2_for_BM25))
+        print(f'loading {os.path.join(refine_path,"refinement.pkl")}')
+        with open(refine_path, 'rb') as f:
+            news_keywords = pickle.load(f)
 
-    stpwords = stopwords.words('english')
-    punctuation = ['!', ',', '.', '?','\\','-','|']
-    stpwords.extend(punctuation)
+        stpwords = stopwords.words('english')
+        punctuation = ['!', ',', '.', '?','\\','-','|']
+        stpwords.extend(punctuation)
 
     news_path = os.path.join(data_path,"DocFeatures.tsv")
     with open(news_path, "r", encoding='utf-8') as f:
@@ -123,7 +141,7 @@ def process_news(local_rank,
                     input_ids, posi_id, freq, mask = refined_content_tokenizer(title,cur_keys,tokenizer,args.seg_length)
 
                 else:
-                    mask, input_ids = split_token(title, tokenizer, args.num_words_title)
+                    mask, input_ids = split_token(title, tokenizer, args.seg_length)
                     posi_id, freq = None, None
 
                 tokens.append(input_ids)
@@ -140,7 +158,7 @@ def process_news(local_rank,
                     input_ids, posi_id, freq, mask = refined_content_tokenizer(abstract, cur_keys, tokenizer, args.seg_length)
 
                 else:
-                    mask, input_ids = split_token(abstract, tokenizer, args.num_words_title)
+                    mask, input_ids = split_token(abstract, tokenizer, args.seg_length)
                     posi_id, freq = None, None
 
                 tokens.append(input_ids)
@@ -159,7 +177,7 @@ def process_news(local_rank,
                                                                             args.seg_length)
 
                 else:
-                    mask, input_ids = split_token(body, tokenizer, args.num_words_title)
+                    mask, input_ids = split_token(body, tokenizer, args.seg_length)
                     posi_id, freq = None, None
 
                 tokens.append(input_ids)
@@ -260,12 +278,3 @@ def split_token(text,tokenizer,max_l=32,reture_token_mask=False):
         text = tokenizer(text, max_length=max_l,pad_to_max_length=False, truncation=True)
         return smask,text['input_ids']
 
-
-
-if __name__ == "__main__":
-    from parameters import parse_args
-
-    args = parse_args()
-    print(args.news_attributes)
-    news_features,category,categories = read_news(args)
-    print(news_features,category,categories)

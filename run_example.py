@@ -1,12 +1,11 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT License.
 
-import numpy as np
 import torch.multiprocessing as mp
 from src.parameters import parse_args
 from pathlib import Path
 from src.train import *
-import os
+from src.utils import *
 
 if __name__ == "__main__":
     os.environ['MASTER_ADDR'] = 'localhost'
@@ -15,7 +14,6 @@ if __name__ == "__main__":
 
     Path(args.model_dir).mkdir(parents=True, exist_ok=True)
 
-    args.world_size = 4
     if 'train' in args.mode:
         print('-----------trian------------')
         if args.world_size > 1:
@@ -31,7 +29,7 @@ if __name__ == "__main__":
                      join=True)
         else:
             cache = [np.zeros((args.cache_num,
-                               args.news_dim))]  # [torch.zeros(args.cache_num, args.news_dim, requires_grad=False) for x in range(args.world_size)]
+                               args.news_dim))]
             news_idx_incache = {}
             prefetch_step = [0]
             data_files = []

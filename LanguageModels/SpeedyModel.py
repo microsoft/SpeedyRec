@@ -122,7 +122,7 @@ class TuringNLRv3PreTrainedModel(BertPreTrainedModel):
 
 
 class BertEmbeddings(nn.Module):
-    """Construct the embeddings from word, position, frequence and token_type embeddings.
+    """Construct the embeddings from word, position, frequency and token_type embeddings.
     """
     def __init__(self, config):
         super(BertEmbeddings, self).__init__()
@@ -177,6 +177,11 @@ class BertEmbeddings(nn.Module):
 
 
 class BertEncoder(nn.Module):
+    ''' Bus Language Modeling
+    The text is split into some smaller segments.
+    In each transformer layer, we select the embedding of [CLS] with each segment as its proxy.
+    The proxy embeddings from all the segments will assemble the bus, which serves as an “information high way” that all the segments can attend to
+    '''
     def __init__(self, config):
         super(BertEncoder, self).__init__()
         self.bus_num = config.bus_num
