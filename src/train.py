@@ -11,72 +11,15 @@ import torch.optim as optim
 from torch.nn.parallel import DistributedDataParallel as DDP
 import torch.distributed as dist
 
-import src.utils
-from src.streaming import get_files
-from src.dataloader import DataLoaderTrain
-from src.preprocess import read_news
-
-from src.speedyfeed import SpeedyFeed
 from LanguageModels.SpeedyModel import SpeedyModelForRec
 from LanguageModels.configuration_tnlrv3 import TuringNLRv3Config
 
+from src.utils import setuplogging, init_process, cleanup_process, warmup_linear, init_config, dump_args
+from src.streaming import get_files
+from src.dataloader import DataLoaderTrain
+from src.preprocess import read_news, check_preprocess_result
+from src.speedyfeed import SpeedyFeed
 
-MODEL_CLASSES = {
-    'speedymodel': (TuringNLRv3Config, SpeedyModelForRec)
-}
-
-# logging = logging.getLogger(__name__)
-
-
-def setup(rank, world_size):
-    # initialize the process group
-    dist.init_process_group("nccl", rank=rank, world_size=world_size,)
-    torch.cuda.set_device(rank)
-
-    # Explicitly setting seed to make sure that models created in two processes
-    # start from same random weights and biases.
-    torch.manual_seed(42)
-
-def cleanup():
-    dist.destroy_process_group()
-
-
-def load_bert(args):
-    config_class, model_class = MODEL_CLASSES[args.bert_model]
-    config = config_class.from_pretrained(
-        args.config_name if args.config_name else args.model_name_or_path,
-        output_hidden_states = True)
-
-    config.bus_num = args.bus_num
-    config.output_attentions = False
-    config.output_hidden_states = False
-
-    bert_model = model_class.from_pretrained(args.model_name_or_path,
-                                        from_tf=bool('.ckpt' in args.model_name_or_path),
-                                        config=config)
-    return bert_model
-
-
-def warmup_linear(args,step):
-    if step <= args.warmup_step:
-        return step/args.warmup_step
-    return max(1e-4,(args.schedule_step-step)/(args.schedule_step-args.warmup_step))
-
-def get_segnum_busnum(args):
-    seg_num = 0
-    for name in args.news_attributes:
-        if name == 'title':
-            seg_num += 1
-        elif name == 'abstract':
-            seg_num += 1
-        elif name == 'body':
-            seg_num += 1
-    args.seg_num = seg_num
-    if seg_num>1 and args.bus_connection:
-        args.bus_num = seg_num
-    else:
-        args.bus_num = 0
-    return args
 
 def train(local_rank,
           args,
@@ -95,16 +38,19 @@ def train(local_rank,
         end(shared bool): If it is True, stop all data processes
         data_files(shared list): the paths of train data, storaged in a shared list
     '''
-    utils.setuplogging()
-    args = get_segnum_busnum(args)
+    setuplogging()
     cache = cache[0]
     os.environ["RANK"] = str(local_rank)
 
-    setup(local_rank, args.world_size)
+    init_process(local_rank, args.world_size)
     device = torch.device("cuda", local_rank)
 
     logging.info('loading model: {}'.format(args.bert_model))
-    bert_model = load_bert(args)
+
+    args, config = init_config(args,TuringNLRv3Config)
+    bert_model = SpeedyModelForRec.from_pretrained(args.model_name_or_path,
+                                                   from_tf=bool('.ckpt' in args.model_name_or_path),
+                                                   config=config)
 
     if args.freeze_bert:
         logging.info('Freeze the parameters of {}'.format(args.bert_model))
@@ -114,9 +60,14 @@ def train(local_rank,
         # choose which block trainabel
         for index, layer in enumerate(bert_model.bert.encoder.layer):
             if index in args.finetune_blocks:
-                logging.info(f"finetune {index} block")
+                logging.info(f"finetune block {index}")
                 for param in layer.parameters():
                     param.requires_grad = True
+
+    if local_rank == 0:
+        check_preprocess_result(args)
+        logging.info('finish the preprocess of docfeatures')
+    dist.barrier()
 
     news_features, category_dict, subcategory_dict = read_news(args)
     logging.info('news_num:{}'.format(len(news_features)))
@@ -134,6 +85,7 @@ def train(local_rank,
             filename_pat=args.filename_pat
         )
         data_paths.sort()
+        dump_args(args)
     dist.barrier()
 
     model = SpeedyFeed(args, bert_model, len(category_dict), len(subcategory_dict))
@@ -148,8 +100,8 @@ def train(local_rank,
         {'params': bert_model.parameters(), 'lr': args.pretrain_lr*warmup_linear(args,1)},
         {'params': rest_param, 'lr': args.lr*warmup_linear(args,1)}])
 
-
     logging.info('Training...')
+    start_time = time.time()
     for ep in range(args.epochs):
         if local_rank == 0:
             # data_files.clear()
@@ -168,11 +120,12 @@ def train(local_rank,
             end=end,
             local_rank=local_rank,
             world_size=args.world_size,
-            news_features=news_features
+            news_features=news_features,
+            enable_prefetch=args.enable_prefetch,
+            enable_prefetch_stream=args.enable_prefetch_stream
         )
 
         loss = 0.0
-        start_time = time.time()
         usernum = 0
         for cnt, batch in tqdm(enumerate(dataloader)):
             address_cache, update_cache, batch = batch
@@ -180,10 +133,11 @@ def train(local_rank,
 
             if args.enable_gpu:
                 segments,token_masks,seg_masks,key_position,fre_cnt, elements, batch_hist, batch_mask, batch_negs = (
-                    x.cuda(non_blocking=True) for x in batch)
+                    x.cuda(non_blocking=True) if x is not None else x for x in batch)
             else:
                 segments,token_masks, seg_masks,key_position, fre_cnt, elements, batch_hist, batch_mask, batch_negs = batch
 
+            #Get news vecs from cache.
             if address_cache is not None:
                 cache_vec = torch.FloatTensor(cache[address_cache]).cuda(non_blocking=True)
             else:
@@ -197,20 +151,19 @@ def train(local_rank,
             bz_loss.backward()
             optimizer.step()
 
+            #update the cache
             if args.drop_encoder_ratio > 0:
                 encode_vecs = encode_vecs.detach().cpu().numpy()
                 cache[update_cache] = encode_vecs
 
             optimizer.param_groups[0]['lr'] = args.pretrain_lr*warmup_linear(args,cnt+1)  #* lr_scaler
             optimizer.param_groups[1]['lr'] = args.lr*warmup_linear(args,cnt+1)   #* lr_scaler
-            if cnt % 500 == 0:
-                logging.info(
-                    'learning_rate:{},{}'.format(args.pretrain_lr*warmup_linear(args,cnt+1), args.lr*warmup_linear(args,cnt+1)))
 
             if cnt % args.log_steps == 0:
                 logging.info(
-                    '[{}] cost_time:{} step:{},  usernum: {}, train_loss: {:.5f}'.format(
-                        local_rank, time.time()-start_time, cnt, usernum, loss.data / (cnt+1)))
+                    '[{}] cost_time:{} step:{},  usernum: {}, train_loss: {:.5f}, lr:{}, pretrain_lr:{}'.format(
+                        local_rank, time.time()-start_time, cnt, usernum, loss.data / (cnt+1),
+                    args.pretrain_lr*warmup_linear(args,cnt+1), args.lr*warmup_linear(args,cnt+1)))
 
             # save model minibatch
             if local_rank == 0 and (cnt+1) % args.save_steps == 0:
@@ -242,7 +195,7 @@ def train(local_rank,
             logging.info(f"Model saved to {ckpt_path}")
         logging.info("time:{}".format(time.time()-start_time))
 
-    cleanup()
+    cleanup_process()
 
 
 

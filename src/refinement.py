@@ -7,7 +7,8 @@ from multiprocessing import cpu_count
 from multiprocessing import Pool
 from src.utils import word_tokenize
 from nltk.corpus import stopwords
-
+from src.parameters import parse_args
+import os
 
 class BM25(object):
     '''
@@ -116,26 +117,23 @@ def mul_preprocess(local_rank,world_size,data_path):
            body_corpus, body_word_list
 
 
+def content_refinement(args,world_size):
+    k2 = args.k2_for_BM25
+    data_path = os.path.join(args.root_data_dir, 'DocFeatures.tsv')
+    topk = 100
 
-if __name__ == '__main__':
-    k2 = 2
-    length = 100
-    data_path = 'example_data/DocFeatures.tsv'
-
-    world_size = 3*(cpu_count()) - 1
     pool = Pool(processes=world_size)
     results = []
     for i in range(world_size):
-        result = pool.apply_async(mul_preprocess, args=(i,world_size,data_path))
+        result = pool.apply_async(mul_preprocess, args=(i, world_size, data_path))
         results.append(result)
     print('Waiting for all subprocesses done...')
     pool.close()
     pool.join()
     print('All subprocesses done.')
 
-
     news_text = {}
-    title_corpus, title_word_list, abs_corpus, abs_word_list, body_corpus, body_word_list = [],set(),[],set(),[],set()
+    title_corpus, title_word_list, abs_corpus, abs_word_list, body_corpus, body_word_list = [], set(), [], set(), [], set()
     for result in results:
         news_dict, p_title_corpus, p_title_word_list, p_abs_corpus, p_abs_word_list, p_body_corpus, p_body_word_list = result.get()
 
@@ -148,7 +146,7 @@ if __name__ == '__main__':
         body_corpus.extend(p_body_corpus)
         body_word_list = body_word_list | p_body_word_list
 
-        for k,v in news_dict.items():
+        for k, v in news_dict.items():
             news_text[k] = v
     print('news num: {}'.format(len(news_text)))
 
@@ -160,24 +158,89 @@ if __name__ == '__main__':
     body_bm25 = BM25(body_corpus, body_word_list, k2)
 
     stpwords = stopwords.words('english')
-    punctuation = ['!', ',', '.', '?','\\','-','|']
+    punctuation = ['!', ',', '.', '?', '\\', '-', '|']
     stpwords.extend(punctuation)
 
     news_keywords = {}
-    for doc_id,text in news_text.items():
+    for doc_id, text in news_text.items():
         titel_key = title_bm25.scoring(text[0])
-        titel_key = [x for x in titel_key if x[0] not in stpwords][:length]
+        titel_key = [x for x in titel_key if x[0] not in stpwords][:topk]
         abs_key = abs_bm25.scoring(text[1])
-        abs_key = [x for x in abs_key if x[0] not in stpwords][:length]
+        abs_key = [x for x in abs_key if x[0] not in stpwords][:topk]
         body_key = body_bm25.scoring(text[2])
-        body_key = [x for x in body_key if x[0] not in stpwords][:length]
+        body_key = [x for x in body_key if x[0] not in stpwords][:topk]
 
-        news_keywords[doc_id] = (titel_key,abs_key,body_key)
-        if len(news_keywords)%10000 == 0:
+        news_keywords[doc_id] = (titel_key, abs_key, body_key)
+        if len(news_keywords) % 10000 == 0:
             print(f'Have processed {len(news_keywords)} news')
 
-    data_path = 'example_data/refinement.pkl'
+    data_path = os.path.join(args.root_data_dir, 'refinement_k2={}.pkl'.format(k2))
     with open(data_path, 'wb') as f:
         pickle.dump(news_keywords, f)
 
+#
+if __name__ == '__main__':
+    args = parse_args()
+
+    # k2 = args.k2_for_BM25
+#     data_path = os.path.join(args.root_data_dir,'DocFeatures.tsv')
+#     world_size = args.num_worker_preprocess
+#     topk = 100
+#
+#     pool = Pool(processes=world_size)
+#     results = []
+#     for i in range(world_size):
+#         result = pool.apply_async(mul_preprocess, args=(i,world_size,data_path))
+#         results.append(result)
+#     print('Waiting for all subprocesses done...')
+#     pool.close()
+#     pool.join()
+#     print('All subprocesses done.')
+#
+#     news_text = {}
+#     title_corpus, title_word_list, abs_corpus, abs_word_list, body_corpus, body_word_list = [],set(),[],set(),[],set()
+#     for result in results:
+#         news_dict, p_title_corpus, p_title_word_list, p_abs_corpus, p_abs_word_list, p_body_corpus, p_body_word_list = result.get()
+#
+#         title_corpus.extend(p_title_corpus)
+#         title_word_list = title_word_list | p_title_word_list
+#
+#         abs_corpus.extend(p_abs_corpus)
+#         abs_word_list = abs_word_list | p_abs_word_list
+#
+#         body_corpus.extend(p_body_corpus)
+#         body_word_list = body_word_list | p_body_word_list
+#
+#         for k,v in news_dict.items():
+#             news_text[k] = v
+#     print('news num: {}'.format(len(news_text)))
+#
+#     title_word_list = list(title_word_list)
+#     abs_word_list = list(abs_word_list)
+#     body_word_list = list(body_word_list)
+#     title_bm25 = BM25(title_corpus, title_word_list, k2)
+#     abs_bm25 = BM25(abs_corpus, abs_word_list, k2)
+#     body_bm25 = BM25(body_corpus, body_word_list, k2)
+#
+#     stpwords = stopwords.words('english')
+#     punctuation = ['!', ',', '.', '?','\\','-','|']
+#     stpwords.extend(punctuation)
+#
+#     news_keywords = {}
+#     for doc_id,text in news_text.items():
+#         titel_key = title_bm25.scoring(text[0])
+#         titel_key = [x for x in titel_key if x[0] not in stpwords][:topk]
+#         abs_key = abs_bm25.scoring(text[1])
+#         abs_key = [x for x in abs_key if x[0] not in stpwords][:topk]
+#         body_key = body_bm25.scoring(text[2])
+#         body_key = [x for x in body_key if x[0] not in stpwords][:topk]
+#
+#         news_keywords[doc_id] = (titel_key,abs_key,body_key)
+#         if len(news_keywords)%10000 == 0:
+#             print(f'Have processed {len(news_keywords)} news')
+#
+#     data_path = '../example_data/refinement.pkl'
+#     with open(data_path, 'wb') as f:
+#         pickle.dump(news_keywords, f)
+#
 
