@@ -132,3 +132,4 @@ dmypy.json
 
 Todo.txt
 example.py
+/example_data/pretrainedModel/base-uncased.bin

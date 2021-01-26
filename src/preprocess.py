@@ -7,8 +7,9 @@ from multiprocessing import Process,Manager,cpu_count
 from nltk.corpus import stopwords
 from transformers import BertTokenizer
 from src.refinement import content_refinement
+import logging
 
-def read_news(args):
+def read_news(args,root_data_dir):
     '''
     load processed news
     Returns:
@@ -17,9 +18,9 @@ def read_news(args):
         subcategory(dict):{subcategory:id}
     '''
     if args.content_refinement:
-        data_path = os.path.join(args.root_data_dir, 'processed_news_l{}_refine.pkl'.format(args.seg_length))
+        data_path = os.path.join(root_data_dir, 'processed_news_l{}_refine.pkl'.format(args.seg_length))
     else:
-        data_path = os.path.join(args.root_data_dir, 'processed_news_l{}.pkl'.format(args.seg_length))
+        data_path = os.path.join(root_data_dir, 'processed_news_l{}.pkl'.format(args.seg_length))
 
     assert os.path.exists(data_path)
 
@@ -27,7 +28,7 @@ def read_news(args):
         process_news = pickle.load(f)
     return process_news['news_features'], process_news['category'], process_news['subcategory']
 
-def check_preprocess_result(args):
+def check_preprocess_result(args,root_data_dir,mode='train',category=None,subcategory=None):
     if args.num_worker_preprocess == -1:
         preprocess_world_size = (cpu_count())//2 - 1
     else:
@@ -35,17 +36,18 @@ def check_preprocess_result(args):
     assert preprocess_world_size>0
 
     if args.content_refinement:
-        data_path = os.path.join(args.root_data_dir, 'processed_news_l{}_refine.pkl'.format(args.seg_length))
+        data_path = os.path.join(root_data_dir, 'processed_news_l{}_refine.pkl'.format(args.seg_length))
     else:
-        data_path = os.path.join(args.root_data_dir, 'processed_news_l{}.pkl'.format(args.seg_length))
+        data_path = os.path.join(root_data_dir, 'processed_news_l{}.pkl'.format(args.seg_length))
     if not os.path.exists(data_path):
-        if args.content_refinement and not os.path.exists(os.path.join(args.root_data_dir, '/refinement_k2={}.pkl'.format(args.k2_for_BM25))):
-            print('start content refinement')
-            content_refinement(args,preprocess_world_size)
-        mul_prepocess(args,preprocess_world_size)
+        if args.content_refinement and not os.path.exists(os.path.join(root_data_dir, '/refinement_k2={}.pkl'.format(args.k2_for_BM25))):
+            logging.info('start content refinement')
+            content_refinement(args,preprocess_world_size,root_data_dir)
+        logging.info('start preprocess doc features')
+        mul_prepocess(args,preprocess_world_size,root_data_dir,mode,category,subcategory)
 
 
-def mul_prepocess(args,world_size):
+def mul_prepocess(args,world_size,root_data_dir,mode='train',category=None,subcategory=None):
     '''
     process DocFeatures with multi-process
     '''
@@ -58,6 +60,12 @@ def mul_prepocess(args,world_size):
     categories = manager.dict()
     subcategories = manager.dict()
 
+    if mode == 'test':
+        for k,v in category.items():
+            categories[k] = v
+        for k,v in subcategory.items():
+            subcategories[k] = v
+
     process_list = []
     for rank in range(world_size):
         p = Process(target=process_news, args=(rank,
@@ -65,17 +73,18 @@ def mul_prepocess(args,world_size):
                                                news_feature,
                                                categories,
                                                subcategories,
-                                               args.root_data_dir,
+                                               root_data_dir,
                                                args,
-                                               tokenizer))
+                                               tokenizer,
+                                               mode))
         p.start()
         process_list.append(p)
-    print('Waiting for all subprocesses done...')
+    logging.info('Waiting for all subprocesses done...')
 
     for res in process_list:
         res.join()
-    print('All subprocesses done.')
-    print(f'news num:{len(news_feature)}')
+    logging.info('All subprocesses done.')
+    logging.info(f'news num:{len(news_feature)}')
 
     processed_news = {}
     processed_news['news_features'] = {}
@@ -89,10 +98,10 @@ def mul_prepocess(args,world_size):
         processed_news['subcategory'][k] = v
 
     if args.content_refinement:
-        save_path = os.path.join(args.root_data_dir,
+        save_path = os.path.join(root_data_dir,
                                  'processed_news_l{}_refine.pkl'.format(args.seg_length))
     else:
-        save_path = os.path.join(args.root_data_dir, 'processed_news_l{}.pkl'.format(args.seg_length))
+        save_path = os.path.join(root_data_dir, 'processed_news_l{}.pkl'.format(args.seg_length))
 
     with open(save_path, 'wb') as f:
         pickle.dump(processed_news, f)
@@ -106,11 +115,12 @@ def process_news(local_rank,
                  subcategories,
                  data_path,
                  args,
-                 tokenizer):
+                 tokenizer,
+                 mode='train'):
 
     if args.content_refinement:
         refine_path =  os.path.join(data_path, 'refinement_k2={}.pkl'.format(args.k2_for_BM25))
-        print(f'loading {os.path.join(refine_path,"refinement.pkl")}')
+        logging.info(f'loading {os.path.join(refine_path,"refinement.pkl")}')
         with open(refine_path, 'rb') as f:
             news_keywords = pickle.load(f)
 
@@ -166,7 +176,6 @@ def process_news(local_rank,
                 key_position.append(posi_id)
                 key_freq.append(freq)
 
-
             if 'body' in args.news_attributes:
                 if args.content_refinement:
                     cur_keys = news_keywords[doc_id][2]
@@ -186,13 +195,19 @@ def process_news(local_rank,
                 key_freq.append(freq)
 
             if 'category' in args.news_attributes:
-                if category not in categories:
-                    categories[category] = len(categories)
+                if mode == 'train':
+                    if category not in categories:
+                        categories[category] = len(categories)
+                elif mode == 'test':
+                    assert category in categories
                 element.append(categories[category])
 
             if 'subcategory' in args.news_attributes:
-                if subcategory not in subcategories:
-                    subcategories[subcategory] = len(subcategories)
+                if mode == 'train':
+                    if subcategory not in subcategories:
+                        subcategories[subcategory] = len(subcategories)
+                elif mode == 'test':
+                    assert subcategory in subcategories
                 element.append(subcategories[subcategory])
 
             news_feature[doc_id] = (tokens,seg_mask,key_position,key_freq,element)

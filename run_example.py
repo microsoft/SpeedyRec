@@ -1,37 +1,27 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT License.
 
-import torch.multiprocessing as mp
 from src.parameters import parse_args
-from pathlib import Path
 from src.train import *
 from src.utils import *
+from src.infer_news_vecs import mul_infer
+from src.test_auc import ddp_test_auc
+from src.test_recall import test_recall
+
 
 if __name__ == "__main__":
-    os.environ['MASTER_ADDR'] = 'localhost'
-    os.environ['MASTER_PORT'] = '12355'
+    metrics = ['auc','recall']
     args = parse_args()
 
-    Path(args.model_dir).mkdir(parents=True, exist_ok=True)
-
     if 'train' in args.mode:
-        print('-----------trian------------')
-        if args.world_size > 1:
-            cache = np.zeros((args.cache_num, args.news_dim))
-            global_cache = mp.Manager().list([cache])
-            news_idx_incache = mp.Manager().dict()
-            global_prefetch_step = mp.Manager().list([0] * args.world_size)
-            data_files = mp.Manager().list([])
-            end = mp.Manager().Value('b', False)
-            mp.spawn(train,
-                     args=(args, global_cache, news_idx_incache, global_prefetch_step, end, data_files),
-                     nprocs=args.world_size,
-                     join=True)
-        else:
-            cache = [np.zeros((args.cache_num,
-                               args.news_dim))]
-            news_idx_incache = {}
-            prefetch_step = [0]
-            data_files = []
-            end = mp.Manager().Value('b', False)
-            train(0, args, cache, news_idx_incache, prefetch_step, end, data_files)
+        ddp_train(args)
+
+    if 'test' in args.mode:
+        news_index, news_vecs = mul_infer(args)
+        if 'auc' in metrics:
+            assert os.path.exists(os.path.join(args.root_data_dir,'testdata/impressions'))
+            ddp_test_auc(args, news_index, news_vecs)
+        if 'recall' in metrics:
+            assert os.path.exists(os.path.join(args.root_data_dir,'testdata/daily_recall'))
+            test_recall(args, news_index,news_vecs)
+

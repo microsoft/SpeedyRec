@@ -10,6 +10,9 @@ from tqdm.auto import tqdm
 import torch.optim as optim
 from torch.nn.parallel import DistributedDataParallel as DDP
 import torch.distributed as dist
+import torch.multiprocessing as mp
+from pathlib import Path
+import numpy as np
 
 from LanguageModels.SpeedyModel import SpeedyModelForRec
 from LanguageModels.configuration_tnlrv3 import TuringNLRv3Config
@@ -19,6 +22,37 @@ from src.streaming import get_files
 from src.dataloader import DataLoaderTrain
 from src.preprocess import read_news, check_preprocess_result
 from src.speedyfeed import SpeedyFeed
+
+
+def ddp_train(args):
+    '''
+    Distributed training
+    '''
+    os.environ['MASTER_ADDR'] = 'localhost'
+    os.environ['MASTER_PORT'] = '12355'
+    setuplogging()
+    Path(args.model_dir).mkdir(parents=True, exist_ok=True)
+
+    logging.info('-----------start train------------')
+    if args.world_size > 1:
+        cache = np.zeros((args.cache_num, args.news_dim))
+        global_cache = mp.Manager().list([cache])
+        news_idx_incache = mp.Manager().dict()
+        global_prefetch_step = mp.Manager().list([0] * args.world_size)
+        data_files = mp.Manager().list([])
+        end = mp.Manager().Value('b', False)
+        mp.spawn(train,
+                 args=(args, global_cache, news_idx_incache, global_prefetch_step, end, data_files),
+                 nprocs=args.world_size,
+                 join=True)
+    else:
+        cache = [np.zeros((args.cache_num,
+                           args.news_dim))]
+        news_idx_incache = {}
+        prefetch_step = [0]
+        data_files = []
+        end = mp.Manager().Value('b', False)
+        train(0, args, cache, news_idx_incache, prefetch_step, end, data_files)
 
 
 def train(local_rank,
@@ -64,12 +98,13 @@ def train(local_rank,
                 for param in layer.parameters():
                     param.requires_grad = True
 
+    root_data_dir = os.path.join(args.root_data_dir,'traindata')
     if local_rank == 0:
-        check_preprocess_result(args)
+        check_preprocess_result(args,root_data_dir)
         logging.info('finish the preprocess of docfeatures')
     dist.barrier()
 
-    news_features, category_dict, subcategory_dict = read_news(args)
+    news_features, category_dict, subcategory_dict = read_news(args,root_data_dir)
     logging.info('news_num:{}'.format(len(news_features)))
 
     #init the news_idx_incache and data_paths
@@ -102,6 +137,7 @@ def train(local_rank,
 
     logging.info('Training...')
     start_time = time.time()
+    global_step = 0
     for ep in range(args.epochs):
         if local_rank == 0:
             # data_files.clear()
@@ -130,6 +166,7 @@ def train(local_rank,
         for cnt, batch in tqdm(enumerate(dataloader)):
             address_cache, update_cache, batch = batch
             usernum += batch[-3].size(0)
+            global_step += 1
 
             if args.enable_gpu:
                 segments,token_masks,seg_masks,key_position,fre_cnt, elements, batch_hist, batch_mask, batch_negs = (
@@ -146,7 +183,7 @@ def train(local_rank,
             bz_loss,encode_vecs = ddp_model(segments,token_masks, seg_masks, elements, cache_vec,
                                             batch_hist, batch_mask, batch_negs,
                                             key_position, fre_cnt)
-            loss += bz_loss.data.float()
+            loss += bz_loss.item()
             optimizer.zero_grad()
             bz_loss.backward()
             optimizer.step()
@@ -156,18 +193,19 @@ def train(local_rank,
                 encode_vecs = encode_vecs.detach().cpu().numpy()
                 cache[update_cache] = encode_vecs
 
-            optimizer.param_groups[0]['lr'] = args.pretrain_lr*warmup_linear(args,cnt+1)  #* lr_scaler
-            optimizer.param_groups[1]['lr'] = args.lr*warmup_linear(args,cnt+1)   #* lr_scaler
+            optimizer.param_groups[0]['lr'] = args.pretrain_lr*warmup_linear(args,global_step+1)  #* world_size
+            optimizer.param_groups[1]['lr'] = args.lr*warmup_linear(args,global_step+1)   #* world_size
 
-            if cnt % args.log_steps == 0:
+            if global_step % args.log_steps == 0:
                 logging.info(
-                    '[{}] cost_time:{} step:{},  usernum: {}, train_loss: {:.5f}, lr:{}, pretrain_lr:{}'.format(
-                        local_rank, time.time()-start_time, cnt, usernum, loss.data / (cnt+1),
-                    args.pretrain_lr*warmup_linear(args,cnt+1), args.lr*warmup_linear(args,cnt+1)))
+                    '[{}] cost_time:{} step:{}, usernum: {}, train_loss: {:.5f}, lr:{}, pretrain_lr:{}'.format(
+                        local_rank, time.time()-start_time, global_step, usernum, loss / args.log_steps,
+                    optimizer.param_groups[1]['lr'], optimizer.param_groups[0]['lr']))
+                loss = 0.0
 
             # save model minibatch
-            if local_rank == 0 and (cnt+1) % args.save_steps == 0:
-                ckpt_path = os.path.join(args.model_dir, f'{args.savename}-epoch-{ep + 1}-{cnt}.pt')
+            if local_rank == 0 and global_step % args.save_steps == 0:
+                ckpt_path = os.path.join(args.model_dir, f'{args.savename}-epoch-{ep + 1}-{global_step}.pt')
                 torch.save(
                     {
                         'model_state_dict': model.state_dict(),
@@ -179,10 +217,8 @@ def train(local_rank,
 
             dist.barrier()
 
-        loss /= (cnt+1)
-        logging.info('epoch:{}, loss:{}, usernum:{}, time:{}'.format(ep+1, loss, usernum,time.time()-start_time))
-
-        # save model last of epoch
+        logging.info('epoch:{}, usernum:{}, time:{}'.format(ep+1, usernum,time.time()-start_time))
+        # save model after an epoch
         if local_rank == 0:
             ckpt_path = os.path.join(args.model_dir, '{}-epoch-{}.pt'.format(args.savename,ep+1))
             torch.save(
@@ -193,7 +229,6 @@ def train(local_rank,
                     'subcategory_dict': subcategory_dict
                 }, ckpt_path)
             logging.info(f"Model saved to {ckpt_path}")
-        logging.info("time:{}".format(time.time()-start_time))
 
     cleanup_process()
 
