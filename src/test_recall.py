@@ -22,7 +22,7 @@ def get_day_item(data_dir, date, news_index, pad_news_index):
 def CreatIndex(batchsize, all_item_vec, itemid, mode):
     item_num = np.shape(all_item_vec)[0]
     p = hnswlib.Index(space=mode, dim=np.shape(all_item_vec)[-1])
-    p.init_index(max_elements=item_num, ef_construction=200, M=all_item_vec.shape[-1])
+    p.init_index(max_elements=item_num, ef_construction=200, M=100)
     p.set_ef(1500)
 
     for step in range(math.ceil(item_num / batchsize)):
