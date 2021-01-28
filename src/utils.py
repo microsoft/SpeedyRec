@@ -53,6 +53,8 @@ def cleanup_process():
 
 
 def init_config(args,Configclass):
+    if args.world_size == -1:
+        args.world_size = torch.cuda.device_count()
     config = Configclass.from_pretrained(
         args.config_name if args.config_name else args.model_name_or_path,
         output_hidden_states=True)

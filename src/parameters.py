@@ -53,7 +53,7 @@ def parse_args():
     parser.add_argument("--enable_gpu", type=utils.str2bool, default=True)
     parser.add_argument("--batch_size", type=int, default=500)
     parser.add_argument("--freeze_bert", type=utils.str2bool, default=False)
-    parser.add_argument("--world_size", type=int, default=4)
+    parser.add_argument("--world_size", type=int, help='default to use all GPUs', default=4)
     parser.add_argument("--epochs", type=int, default=1)
     parser.add_argument(
         "--news_attributes",

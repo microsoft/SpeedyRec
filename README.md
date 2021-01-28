@@ -10,7 +10,7 @@ See [example_data/README.md](example_data/README.md) for Dataset Format
 
 Run.
 ```python
-python run_example.py --root_data_dir ./example_data/  --news_attributes title abstract body --bus_connection True --content_refinement True --max_keyword_freq 100  --drop_encoder_ratio 1 --max_step_in_cache 20  --bucket_num 2  --mode train_test
+python run_example.py --root_data_dir ./example_data/  --news_attributes title abstract body --bus_connection True --content_refinement True --max_keyword_freq 100  --drop_encoder_ratio 1 --max_step_in_cache 20  --bucket_num 2  --mode train_test  --world_size 4
 ```
 
 > This repo has been populated by an initial template to help get you started. Please
