@@ -14,19 +14,16 @@ import torch.distributed as dist
 from LanguageModels.SpeedyModel import SpeedyModelForRec
 from LanguageModels.configuration_tnlrv3 import TuringNLRv3Config
 
-from src.utils import setuplogging, init_process, cleanup_process, warmup_linear, init_config, dump_args
-from src.streaming import get_files
-from src.dataloader import DataLoaderTrain
-from src.preprocess import read_news, check_preprocess_result
-from src.speedyfeed import SpeedyFeed
+# from src.utils import
+from .utils import (setuplogging, init_process, cleanup_process, warmup_linear,
+                    init_config, dump_args)
+from .streaming import get_files
+from .dataloader import DataLoaderTrain
+from .preprocess import read_news, check_preprocess_result
+from .speedyfeed import SpeedyFeed
 
 
-def train(local_rank,
-          args,
-          cache,
-          news_idx_incache,
-          prefetch_step,
-          end,
+def train(local_rank, args, cache, news_idx_incache, prefetch_step, end,
           data_files):
     '''
     Args:
@@ -47,10 +44,11 @@ def train(local_rank,
 
     logging.info('loading model: {}'.format(args.bert_model))
 
-    args, config = init_config(args,TuringNLRv3Config)
-    bert_model = SpeedyModelForRec.from_pretrained(args.model_name_or_path,
-                                                   from_tf=bool('.ckpt' in args.model_name_or_path),
-                                                   config=config)
+    args, config = init_config(args, TuringNLRv3Config)
+    bert_model = SpeedyModelForRec.from_pretrained(
+        args.model_name_or_path,
+        from_tf=bool('.ckpt' in args.model_name_or_path),
+        config=config)
 
     if args.freeze_bert:
         logging.info('Freeze the parameters of {}'.format(args.bert_model))
@@ -77,35 +75,43 @@ def train(local_rank,
     if local_rank == 0:
         idx = 0
         for news in news_features.keys():
-            news_idx_incache[news] = [idx,-args.max_step_in_cache]
+            news_idx_incache[news] = [idx, -args.max_step_in_cache]
             idx += 1
-        data_paths = get_files(
-            dirname=os.path.join(args.root_data_dir,
-                                 'traindata'),
-            filename_pat=args.filename_pat
-        )
+        data_paths = get_files(dirname=os.path.join(args.root_data_dir,
+                                                    'traindata'),
+                               filename_pat=args.filename_pat)
         data_paths.sort()
         dump_args(args)
     dist.barrier()
 
-    model = SpeedyFeed(args, bert_model, len(category_dict), len(subcategory_dict))
+    model = SpeedyFeed(args, bert_model, len(category_dict),
+                       len(subcategory_dict))
     model = model.to(device)
     if args.world_size > 1:
-        ddp_model = DDP(model,device_ids=[local_rank],output_device=local_rank,find_unused_parameters=True)
+        ddp_model = DDP(model,
+                        device_ids=[local_rank],
+                        output_device=local_rank,
+                        find_unused_parameters=True)
     else:
         ddp_model = model
 
-    rest_param = filter(lambda x: id(x) not in list(map(id, bert_model.parameters())), ddp_model.parameters())
-    optimizer = optim.Adam([
-        {'params': bert_model.parameters(), 'lr': args.pretrain_lr*warmup_linear(args,1)},
-        {'params': rest_param, 'lr': args.lr*warmup_linear(args,1)}])
+    rest_param = filter(
+        lambda x: id(x) not in list(map(id, bert_model.parameters())),
+        ddp_model.parameters())
+    optimizer = optim.Adam([{
+        'params': bert_model.parameters(),
+        'lr': args.pretrain_lr * warmup_linear(args, 1)
+    }, {
+        'params': rest_param,
+        'lr': args.lr * warmup_linear(args, 1)
+    }])
 
     logging.info('Training...')
     start_time = time.time()
     for ep in range(args.epochs):
         if local_rank == 0:
             # data_files.clear()
-            while len(data_files)>0:
+            while len(data_files) > 0:
                 data_files.pop()
             data_files.extend(data_paths)
             random.seed(ep)
@@ -122,8 +128,7 @@ def train(local_rank,
             world_size=args.world_size,
             news_features=news_features,
             enable_prefetch=args.enable_prefetch,
-            enable_prefetch_stream=args.enable_prefetch_stream
-        )
+            enable_prefetch_stream=args.enable_prefetch_stream)
 
         loss = 0.0
         usernum = 0
@@ -132,20 +137,23 @@ def train(local_rank,
             usernum += batch[-3].size(0)
 
             if args.enable_gpu:
-                segments,token_masks,seg_masks,key_position,fre_cnt, elements, batch_hist, batch_mask, batch_negs = (
-                    x.cuda(non_blocking=True) if x is not None else x for x in batch)
+                segments, token_masks, seg_masks, key_position, fre_cnt, elements, batch_hist, batch_mask, batch_negs = (
+                    x.cuda(non_blocking=True) if x is not None else x
+                    for x in batch)
             else:
-                segments,token_masks, seg_masks,key_position, fre_cnt, elements, batch_hist, batch_mask, batch_negs = batch
+                segments, token_masks, seg_masks, key_position, fre_cnt, elements, batch_hist, batch_mask, batch_negs = batch
 
             #Get news vecs from cache.
             if address_cache is not None:
-                cache_vec = torch.FloatTensor(cache[address_cache]).cuda(non_blocking=True)
+                cache_vec = torch.FloatTensor(
+                    cache[address_cache]).cuda(non_blocking=True)
             else:
                 cache_vec = None
 
-            bz_loss,encode_vecs = ddp_model(segments,token_masks, seg_masks, elements, cache_vec,
-                                            batch_hist, batch_mask, batch_negs,
-                                            key_position, fre_cnt)
+            bz_loss, encode_vecs = ddp_model(segments, token_masks, seg_masks,
+                                             elements, cache_vec, batch_hist,
+                                             batch_mask, batch_negs,
+                                             key_position, fre_cnt)
             loss += bz_loss.data.float()
             optimizer.zero_grad()
             bz_loss.backward()
@@ -156,18 +164,24 @@ def train(local_rank,
                 encode_vecs = encode_vecs.detach().cpu().numpy()
                 cache[update_cache] = encode_vecs
 
-            optimizer.param_groups[0]['lr'] = args.pretrain_lr*warmup_linear(args,cnt+1)  #* lr_scaler
-            optimizer.param_groups[1]['lr'] = args.lr*warmup_linear(args,cnt+1)   #* lr_scaler
+            optimizer.param_groups[0]['lr'] = args.pretrain_lr * warmup_linear(
+                args, cnt + 1)  #* lr_scaler
+            optimizer.param_groups[1]['lr'] = args.lr * warmup_linear(
+                args, cnt + 1)  #* lr_scaler
 
             if cnt % args.log_steps == 0:
                 logging.info(
-                    '[{}] cost_time:{} step:{},  usernum: {}, train_loss: {:.5f}, lr:{}, pretrain_lr:{}'.format(
-                        local_rank, time.time()-start_time, cnt, usernum, loss.data / (cnt+1),
-                    args.pretrain_lr*warmup_linear(args,cnt+1), args.lr*warmup_linear(args,cnt+1)))
+                    '[{}] cost_time:{} step:{},  usernum: {}, train_loss: {:.5f}, lr:{}, pretrain_lr:{}'
+                    .format(local_rank,
+                            time.time() - start_time, cnt, usernum,
+                            loss.data / (cnt + 1),
+                            args.pretrain_lr * warmup_linear(args, cnt + 1),
+                            args.lr * warmup_linear(args, cnt + 1)))
 
             # save model minibatch
-            if local_rank == 0 and (cnt+1) % args.save_steps == 0:
-                ckpt_path = os.path.join(args.model_dir, f'{args.savename}-epoch-{ep + 1}-{cnt}.pt')
+            if local_rank == 0 and (cnt + 1) % args.save_steps == 0:
+                ckpt_path = os.path.join(
+                    args.model_dir, f'{args.savename}-epoch-{ep + 1}-{cnt}.pt')
                 torch.save(
                     {
                         'model_state_dict': model.state_dict(),
@@ -179,12 +193,15 @@ def train(local_rank,
 
             dist.barrier()
 
-        loss /= (cnt+1)
-        logging.info('epoch:{}, loss:{}, usernum:{}, time:{}'.format(ep+1, loss, usernum,time.time()-start_time))
+        loss /= (cnt + 1)
+        logging.info('epoch:{}, loss:{}, usernum:{}, time:{}'.format(
+            ep + 1, loss, usernum,
+            time.time() - start_time))
 
         # save model last of epoch
         if local_rank == 0:
-            ckpt_path = os.path.join(args.model_dir, '{}-epoch-{}.pt'.format(args.savename,ep+1))
+            ckpt_path = os.path.join(
+                args.model_dir, '{}-epoch-{}.pt'.format(args.savename, ep + 1))
             torch.save(
                 {
                     'model_state_dict': model.state_dict(),
@@ -193,11 +210,6 @@ def train(local_rank,
                     'subcategory_dict': subcategory_dict
                 }, ckpt_path)
             logging.info(f"Model saved to {ckpt_path}")
-        logging.info("time:{}".format(time.time()-start_time))
+        logging.info("time:{}".format(time.time() - start_time))
 
     cleanup_process()
-
-
-
-
-

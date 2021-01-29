@@ -2,7 +2,7 @@
 # Licensed under the MIT License.
 
 import argparse
-from src import utils
+from . import utils
 import logging
 
 

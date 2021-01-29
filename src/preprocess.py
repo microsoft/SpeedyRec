@@ -6,7 +6,7 @@ import os
 from multiprocessing import Process,Manager,cpu_count
 from nltk.corpus import stopwords
 from transformers import BertTokenizer
-from src.refinement import content_refinement
+from .refinement import content_refinement
 
 def read_news(args):
     '''

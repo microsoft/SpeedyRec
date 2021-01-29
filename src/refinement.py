@@ -1,13 +1,12 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT License.
-
 import pickle
 import math
 from multiprocessing import cpu_count
 from multiprocessing import Pool
-from src.utils import word_tokenize
+from .utils import word_tokenize
 from nltk.corpus import stopwords
-from src.parameters import parse_args
+from .parameters import parse_args
 import os
 
 class BM25(object):
