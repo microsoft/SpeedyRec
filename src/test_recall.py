@@ -9,8 +9,8 @@ import os
 import torch
 import logging
 from tqdm import tqdm
-from src.test_auc import load_model
-from src.infer_news_vecs import pad_to_fix_len
+from .test_auc import load_model
+from .infer_news_vecs import pad_to_fix_len
 
 def get_day_item(data_dir, date, news_index, pad_news_index):
     filename = os.path.join(data_dir, "daily_news_{}.tsv".format(date))

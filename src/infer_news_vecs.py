@@ -11,9 +11,9 @@ from torch.multiprocessing import Pool, set_start_method
 from LanguageModels.SpeedyModel import SpeedyModelForRec
 from LanguageModels.configuration_tnlrv3 import TuringNLRv3Config
 
-from src.utils import init_config
-from src.preprocess import read_news, check_preprocess_result
-from src.speedyfeed import SpeedyFeed
+from .utils import init_config
+from .preprocess import read_news, check_preprocess_result
+from .speedyfeed import SpeedyFeed
 
 
 def pad_to_fix_len(x, fix_length, padding_value=0, padding_front=True):

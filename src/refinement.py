@@ -4,8 +4,8 @@ import pickle
 import math
 from multiprocessing import Pool
 from .utils import word_tokenize
-from nltk.corpus import stopwords
 from .parameters import parse_args
+from nltk.corpus import stopwords
 import os
 import logging
 
