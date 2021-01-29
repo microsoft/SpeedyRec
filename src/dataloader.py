@@ -13,7 +13,6 @@ from .streaming import StreamSamplerTest, StreamSamplerTrain
 import logging
 import math
 
-
 class DataLoaderTrain(IterableDataset):
     '''
     DataLoader used for training with producer-consumer architecture.
@@ -361,7 +360,7 @@ class DataLoaderTest():
 
     def start(self):
         self.epoch += 1
-        self.sampler_data = StreamSamplerTest(
+        self.sampler = StreamSamplerTest(
             data_dir=self.data_dir,
             filename_pat=self.filename_pat,
             batch_size=self.batch_size,
@@ -370,7 +369,7 @@ class DataLoaderTest():
             enable_shuffle=self.enable_shuffle,
             shuffle_seed=self.epoch,  # epoch id as shuffle random seed
         )
-        self.sampler = self.sampler_data._genarate_batch()
+        self.sampler.__iter__()
 
     def start_async(self):
         self.aval_count = 0
@@ -406,15 +405,12 @@ class DataLoaderTest():
                 enable_shuffle=self.enable_shuffle,
                 shuffle_seed=self.epoch,  # epoch id as shuffle random seed
             )
-            # t0 = time.time()
-            for batch in self.sampler._genarate_batch():
+            for batch in self.sampler:
                 if self.stopped:
                     break
                 context = self._process(batch)
                 self.outputs.put(context)
                 self.aval_count += 1
-                # logging.info(f"_produce cost:{time.time()-t0}")
-                # t0 = time.time()
         except:
             traceback.print_exc(file=sys.stdout)
             self.pool.shutdown(wait=False)
@@ -422,7 +418,6 @@ class DataLoaderTest():
 
     def _process(self, batch):
         user_feature_batch, log_mask_batch, news_feature_batch, label_batch = [], [], [], []
-
 
         for line in batch:
             uid, click_docs, pos, neg = line.decode(encoding="utf-8").split('\t')
@@ -489,4 +484,3 @@ class DataLoaderTest():
                 self.pool.shutdown(wait=True)
                 logging.info("shut down pool.")
             self.sampler = None
-
