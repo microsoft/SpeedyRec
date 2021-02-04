@@ -59,7 +59,7 @@ class TuringNLRv3PreTrainedModel(BertPreTrainedModel):
                     kwargs["state_dict"] = state_dict_convert[model_type](state_dict)
                     logger.info("Load local ckpts")
                 else:
-                    raise RuntimeError("Not fined the pre-trained checkpoint !")
+                    raise RuntimeError("the pre-trained checkpoint not found!")
 
         if kwargs["state_dict"] is None:
             logger.info("TNLRv3 does't support the model !")
@@ -209,7 +209,7 @@ class BertEncoder(nn.Module):
 
             if i == 0:
                 temp_attention_mask = attention_mask.clone()
-                temp_attention_mask[:, :, :, :seg_num] = -10000.0
+                temp_attention_mask[:, :, :, :seg_num] = -1e9
                 layer_outputs = layer_module(hidden_states, attention_mask=temp_attention_mask, rel_pos=rel_pos)
             else:
                 layer_outputs = layer_module(hidden_states, attention_mask=attention_mask, rel_pos=rel_pos)
@@ -276,7 +276,7 @@ class SpeedyModel(TuringNLRv3PreTrainedModel):
             attention_mask: BS S+L
         '''
         embedding_output, position_ids = self.embeddings(input_ids=input_ids,fre_cnt=fre_cnt)  # BS L D, BS L
-        attention_mask = (1.0 - attention_mask[:, None, None, :]) * -10000.0  # BS 1 1 S+L
+        attention_mask = (1.0 - attention_mask[:, None, None, :]) * -1e9  # BS 1 1 S+L
 
         rel_pos = None
         if self.config.rel_pos_bins > 0:
@@ -285,7 +285,7 @@ class SpeedyModel(TuringNLRv3PreTrainedModel):
             rel_pos_mat = position_ids.unsqueeze(-2) - position_ids.unsqueeze(-1)  # BS L L
             rel_pos = relative_position_bucket(rel_pos_mat, num_buckets=self.config.rel_pos_bins,
                                                max_distance=self.config.max_rel_pos)
-
+            
             if self.config.bus_num > 0:
                 # BS S+L L
                 rel_pos = torch.cat(
@@ -300,8 +300,8 @@ class SpeedyModel(TuringNLRv3PreTrainedModel):
                 rel_pos = torch.cat([other_seg_relpos, rel_pos], dim=-1)
 
             rel_pos = F.one_hot(rel_pos, num_classes=self.config.rel_pos_bins + self.config.bus_num).type_as(
-                embedding_output[0])
-            rel_pos = self.rel_pos_bias(rel_pos).permute(0, 3, 1, 2)  # BS H S_L S+L
+                embedding_output[0]) # BS S+L S+L S+L
+            rel_pos = self.rel_pos_bias(rel_pos).permute(0, 3, 1, 2)  # BS H S+L S+L
 
         if self.config.bus_num > 0:
             # Add station_placeholder

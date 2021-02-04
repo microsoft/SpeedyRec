@@ -108,6 +108,7 @@ celerybeat.pid
 .venv
 .vscode
 .DS_Store
+
 env/
 venv/
 ENV/
@@ -134,6 +135,7 @@ dmypy.json
 
 # Pretrained Models
 *.bin
+*.pkl
 
 Todo.txt
 example.py

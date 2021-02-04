@@ -17,7 +17,8 @@ import numpy as np
 from LanguageModels.SpeedyModel import SpeedyModelForRec
 from LanguageModels.configuration_tnlrv3 import TuringNLRv3Config
 
-from .utils import setuplogging, init_process, cleanup_process, warmup_linear, init_config, dump_args
+from .utils import (setuplogging, init_process, cleanup_process, warmup_linear, init_config, dump_args, get_device,
+                    get_barrier)
 from .streaming import get_files
 from .dataloader import DataLoaderTrain
 from .preprocess import read_news, check_preprocess_result
@@ -52,8 +53,7 @@ def ddp_train(args):
         prefetch_step = [0]
         data_files = []
         end = mp.Manager().Value('b', False)
-        train(0, args, cache, news_idx_incache, prefetch_step, end, data_files)
-
+        train(0, args, cache, news_idx_incache, prefetch_step, end, data_files, dist_training=False)
 
 def train(local_rank,
           args,
@@ -61,7 +61,8 @@ def train(local_rank,
           news_idx_incache,
           prefetch_step,
           end,
-          data_files):
+          data_files, 
+          dist_training=True):
     '''
     Args:
         local_rank(int): the rank of current process
@@ -74,10 +75,11 @@ def train(local_rank,
     '''
     setuplogging()
     cache = cache[0]
-    os.environ["RANK"] = str(local_rank)
 
-    init_process(local_rank, args.world_size)
-    device = torch.device("cuda", local_rank)
+    if dist_training:
+        init_process(local_rank, args.world_size)
+    device = get_device()
+    barrier = get_barrier(dist_training)
 
     logging.info('loading model: {}'.format(args.bert_model))
 
@@ -92,7 +94,7 @@ def train(local_rank,
         for param in bert_model.parameters():
             param.requires_grad = False
 
-        # choose which block trainabel
+        # choose which block trainable
         for index, layer in enumerate(bert_model.bert.encoder.layer):
             if index in args.finetune_blocks:
                 logging.info(f"finetune block {index}")
@@ -103,7 +105,7 @@ def train(local_rank,
     if local_rank == 0:
         check_preprocess_result(args,root_data_dir)
         logging.info('finish the preprocess of docfeatures')
-    dist.barrier()
+    barrier()
 
     news_features, category_dict, subcategory_dict = read_news(args,root_data_dir)
     logging.info('news_num:{}'.format(len(news_features)))
@@ -120,7 +122,7 @@ def train(local_rank,
                                filename_pat=args.filename_pat)
         data_paths.sort()
         dump_args(args)
-    dist.barrier()
+    barrier()
 
     model = SpeedyFeed(args, bert_model, len(category_dict),
                        len(subcategory_dict))
@@ -155,7 +157,7 @@ def train(local_rank,
             data_files.extend(data_paths)
             random.seed(ep)
             random.shuffle(data_files)
-        dist.barrier()
+        barrier()
 
         dataloader = DataLoaderTrain(
             args=args,

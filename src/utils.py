@@ -1,6 +1,5 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT License.
-
 import logging
 import sys
 import torch
@@ -30,10 +29,12 @@ def str2bool(v):
 
 
 def setuplogging():
+    from .world import LOG_LEVEL
+    
     root = logging.getLogger()
-    root.setLevel(logging.INFO)
+    root.setLevel(LOG_LEVEL)
     handler = logging.StreamHandler(sys.stdout)
-    handler.setLevel(logging.INFO)
+    handler.setLevel(LOG_LEVEL)
     formatter = logging.Formatter("[%(levelname)s %(asctime)s] %(message)s")
     handler.setFormatter(formatter)
     root.addHandler(handler)
@@ -41,6 +42,7 @@ def setuplogging():
 
 def init_process(rank, world_size):
     # initialize the process group
+    os.environ["RANK"] = str(local_rank)
     dist.init_process_group("nccl", rank=rank, world_size=world_size,)
     torch.cuda.set_device(rank)
 
@@ -51,6 +53,18 @@ def init_process(rank, world_size):
 def cleanup_process():
     dist.destroy_process_group()
 
+def get_device():
+    if torch.cuda.is_available():
+        local_rank = os.environ.get("RANK", 0)
+        return torch.device('cuda', local_rank)
+    return torch.device('cpu')
+
+def get_barrier(dist_training):
+    if dist_training:
+        return dist.barrier
+    def do_nothing():
+        pass
+    return do_nothing
 
 def init_config(args,Configclass):
     if args.world_size == -1:
