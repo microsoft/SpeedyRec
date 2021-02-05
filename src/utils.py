@@ -8,7 +8,7 @@ import argparse
 import re
 import os
 import torch.distributed as dist
-
+from contextlib import contextmanager
 
 def word_tokenize(sent):
     pat = re.compile(r'[\w]+|[.,!?;|]')
@@ -65,6 +65,17 @@ def get_barrier(dist_training):
     def do_nothing():
         pass
     return do_nothing
+ 
+@contextmanager
+def only_on_main_process(local_rank, barrier):
+    """
+    Decorator to make all processes in distributed training wait for each local_master to do something.
+    """
+    if local_rank not in [-1, 0]:
+        barrier()
+    yield
+    if local_rank == 0:
+        barrier()
 
 def init_config(args,Configclass):
     if args.world_size == -1:
@@ -106,6 +117,13 @@ def dump_args(args):
         if not arg.startswith("_"):
             logging.info(f"args[{arg}]={getattr(args, arg)}")
 
+def check_args_environment(args):
+    if not torch.cuda.is_available():
+        logging.warning("Cuda is not available, " \
+                        "related options will be disabled")
+    args.enable_gpu = torch.cuda.is_available() & args.enable_gpu
+    
+    return args
 
 def acc(y_true, y_hat):
     y_hat = torch.argmax(y_hat, dim=-1)

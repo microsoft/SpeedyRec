@@ -18,7 +18,7 @@ from LanguageModels.SpeedyModel import SpeedyModelForRec
 from LanguageModels.configuration_tnlrv3 import TuringNLRv3Config
 
 from .utils import (setuplogging, init_process, cleanup_process, warmup_linear, init_config, dump_args, get_device,
-                    get_barrier)
+                    get_barrier, only_on_main_process, check_args_environment)
 from .streaming import get_files
 from .dataloader import DataLoaderTrain
 from .preprocess import read_news, check_preprocess_result
@@ -33,7 +33,7 @@ def ddp_train(args):
     os.environ['MASTER_PORT'] = '12355'
     setuplogging()
     Path(args.model_dir).mkdir(parents=True, exist_ok=True)
-
+    args = check_args_environment(args)
     logging.info('-----------start train------------')
     if args.world_size > 1:
         cache = np.zeros((args.cache_num, args.news_dim))
@@ -102,32 +102,29 @@ def train(local_rank,
                     param.requires_grad = True
 
     root_data_dir = os.path.join(args.root_data_dir,'traindata')
-    if local_rank == 0:
+    with only_on_main_process(local_rank, barrier):
         check_preprocess_result(args,root_data_dir)
         logging.info('finish the preprocess of docfeatures')
-    barrier()
 
     news_features, category_dict, subcategory_dict = read_news(args,root_data_dir)
     logging.info('news_num:{}'.format(len(news_features)))
 
     #init the news_idx_incache and data_paths
     assert args.cache_num >= len(news_features)
-    if local_rank == 0:
-        idx = 0
-        for news in news_features.keys():
+    
+    with only_on_main_process(local_rank, barrier):
+        for idx, news in enumerate(news_features.keys()):
             news_idx_incache[news] = [idx, -args.max_step_in_cache]
-            idx += 1
-        data_paths = get_files(dirname=os.path.join(args.root_data_dir,
-                                                    'traindata'),
+            
+        data_paths = get_files(dirname=os.path.join(args.root_data_dir,'traindata'),
                                filename_pat=args.filename_pat)
         data_paths.sort()
         dump_args(args)
-    barrier()
 
     model = SpeedyFeed(args, bert_model, len(category_dict),
                        len(subcategory_dict))
     model = model.to(device)
-    if args.world_size > 1:
+    if dist_training:
         ddp_model = DDP(model,
                         device_ids=[local_rank],
                         output_device=local_rank,
@@ -150,14 +147,13 @@ def train(local_rank,
     start_time = time.time()
     global_step = 0
     for ep in range(args.epochs):
-        if local_rank == 0:
+        with only_on_main_process(local_rank, barrier):
             # data_files.clear()
             while len(data_files) > 0:
                 data_files.pop()
             data_files.extend(data_paths)
             random.seed(ep)
             random.shuffle(data_files)
-        barrier()
 
         dataloader = DataLoaderTrain(
             args=args,
@@ -175,6 +171,7 @@ def train(local_rank,
         usernum = 0
         for cnt, batch in tqdm(enumerate(dataloader)):
             address_cache, update_cache, batch = batch
+            print(batch)
             usernum += batch[-3].size(0)
             global_step += 1
 

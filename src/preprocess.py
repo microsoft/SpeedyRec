@@ -120,7 +120,7 @@ def process_news(local_rank,
 
     if args.content_refinement:
         refine_path =  os.path.join(data_path, 'refinement_k2={}.pkl'.format(args.k2_for_BM25))
-        logging.info(f'loading {os.path.join(refine_path,"refinement.pkl")}')
+        logging.info(f'loading {refine_path}')
         with open(refine_path, 'rb') as f:
             news_keywords = pickle.load(f)
 
