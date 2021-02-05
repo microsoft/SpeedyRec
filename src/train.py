@@ -171,7 +171,6 @@ def train(local_rank,
         usernum = 0
         for cnt, batch in tqdm(enumerate(dataloader)):
             address_cache, update_cache, batch = batch
-            print(batch)
             usernum += batch[-3].size(0)
             global_step += 1
 

@@ -30,13 +30,16 @@ def str2bool(v):
 
 def setuplogging():
     from .world import LOG_LEVEL
-    
+
     root = logging.getLogger()
+    # logging.basicConfig(format="[%(levelname)s %(asctime)s] %(message)s", level=logging.INFO)
     root.setLevel(LOG_LEVEL)
     handler = logging.StreamHandler(sys.stdout)
     handler.setLevel(LOG_LEVEL)
     formatter = logging.Formatter("[%(levelname)s %(asctime)s] %(message)s")
     handler.setFormatter(formatter)
+    if (root.hasHandlers()):
+        root.handlers.clear()
     root.addHandler(handler)
 
 
