@@ -23,5 +23,5 @@ if __name__ == "__main__":
             ddp_test_auc(args, news_index, news_vecs)
         if 'recall' in metrics:
             assert os.path.exists(os.path.join(args.root_data_dir,'testdata/daily_recall'))
-            test_recall(args, news_index,news_vecs)
+            test_recall(args, news_index, news_vecs)
 

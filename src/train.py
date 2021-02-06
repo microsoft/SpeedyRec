@@ -203,5 +203,41 @@ def train(local_rank,
             if args.drop_encoder_ratio > 0:
                 encode_vecs = encode_vecs.detach().cpu().numpy()
                 cache[update_cache] = encode_vecs
+
             optimizer.param_groups[0]['lr'] = args.pretrain_lr*warmup_linear(args,global_step+1)  #* world_size
             optimizer.param_groups[1]['lr'] = args.lr*warmup_linear(args,global_step+1)   #* world_size
+
+            if global_step % args.log_steps == 0:
+                logging.info(
+                    '[{}] cost_time:{} step:{}, usernum: {}, train_loss: {:.5f}, lr:{}, pretrain_lr:{}'.format(
+                        local_rank, time.time() - start_time, global_step, usernum, loss / args.log_steps,
+                        optimizer.param_groups[1]['lr'], optimizer.param_groups[0]['lr']))
+                loss = 0.0
+
+            # save model minibatch
+            if local_rank == 0 and global_step % args.save_steps == 0:
+                ckpt_path = os.path.join(args.model_dir, f'{args.savename}-epoch-{ep + 1}-{global_step}.pt')
+                torch.save(
+                    {
+                        'model_state_dict': model.state_dict(),
+                        'optimizer': optimizer.state_dict(),
+                        'category_dict': category_dict,
+                        'subcategory_dict': subcategory_dict
+                    }, ckpt_path)
+                logging.info(f"Model saved to {ckpt_path}")
+
+        logging.info('epoch:{}, usernum:{}, time:{}'.format(ep + 1, usernum, time.time() - start_time))
+        # save model after an epoch
+        if local_rank == 0:
+            ckpt_path = os.path.join(args.model_dir, '{}-epoch-{}.pt'.format(args.savename, ep + 1))
+            torch.save(
+                {
+                    'model_state_dict': model.state_dict(),
+                    'optimizer': optimizer.state_dict(),
+                    'category_dict': category_dict,
+                    'subcategory_dict': subcategory_dict
+                }, ckpt_path)
+            logging.info(f"Model saved to {ckpt_path}")
+
+    if dist_training:
+        cleanup_process()

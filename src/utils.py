@@ -59,7 +59,7 @@ def cleanup_process():
 def get_device():
     if torch.cuda.is_available():
         local_rank = os.environ.get("RANK", 0)
-        return torch.device('cuda', local_rank)
+        return torch.device('cuda', int(local_rank))
     return torch.device('cpu')
 
 def get_barrier(dist_training):
