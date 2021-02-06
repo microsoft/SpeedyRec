@@ -45,7 +45,7 @@ def setuplogging():
 
 def init_process(rank, world_size):
     # initialize the process group
-    os.environ["RANK"] = str(local_rank)
+    os.environ["RANK"] = str(rank)
     dist.init_process_group("nccl", rank=rank, world_size=world_size,)
     torch.cuda.set_device(rank)
 
@@ -74,9 +74,11 @@ def only_on_main_process(local_rank, barrier):
     """
     Decorator to make all processes in distributed training wait for each local_master to do something.
     """
+    need = True
     if local_rank not in [-1, 0]:
         barrier()
-    yield
+        need = False
+    yield need
     if local_rank == 0:
         barrier()
 

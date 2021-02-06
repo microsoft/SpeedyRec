@@ -209,7 +209,7 @@ class BertEncoder(nn.Module):
 
             if i == 0:
                 temp_attention_mask = attention_mask.clone()
-                temp_attention_mask[:, :, :, :seg_num] = -1e9
+                temp_attention_mask[:, :, :, :seg_num] = -1e4
                 layer_outputs = layer_module(hidden_states, attention_mask=temp_attention_mask, rel_pos=rel_pos)
             else:
                 layer_outputs = layer_module(hidden_states, attention_mask=attention_mask, rel_pos=rel_pos)
@@ -276,7 +276,7 @@ class SpeedyModel(TuringNLRv3PreTrainedModel):
             attention_mask: BS S+L
         '''
         embedding_output, position_ids = self.embeddings(input_ids=input_ids,fre_cnt=fre_cnt)  # BS L D, BS L
-        attention_mask = (1.0 - attention_mask[:, None, None, :]) * -1e9  # BS 1 1 S+L
+        attention_mask = (1.0 - attention_mask[:, None, None, :]) * -1e4  # BS 1 1 S+L
 
         rel_pos = None
         if self.config.rel_pos_bins > 0:
