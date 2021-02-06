@@ -102,9 +102,10 @@ def train(local_rank,
                     param.requires_grad = True
 
     root_data_dir = os.path.join(args.root_data_dir,'traindata')
-    with only_on_main_process(local_rank, barrier):
-        check_preprocess_result(args,root_data_dir)
-        logging.info('finish the preprocess of docfeatures')
+    with only_on_main_process(local_rank, barrier) as need:
+        if need:
+            check_preprocess_result(args,root_data_dir)
+            logging.info('finish the preprocess of docfeatures')
 
     news_features, category_dict, subcategory_dict = read_news(args,root_data_dir)
     logging.info('news_num:{}'.format(len(news_features)))
@@ -112,14 +113,15 @@ def train(local_rank,
     #init the news_idx_incache and data_paths
     assert args.cache_num >= len(news_features)
     
-    with only_on_main_process(local_rank, barrier):
-        for idx, news in enumerate(news_features.keys()):
-            news_idx_incache[news] = [idx, -args.max_step_in_cache]
-            
-        data_paths = get_files(dirname=os.path.join(args.root_data_dir,'traindata'),
-                               filename_pat=args.filename_pat)
-        data_paths.sort()
-        dump_args(args)
+    with only_on_main_process(local_rank, barrier) as need:
+        if need:
+            for idx, news in enumerate(news_features.keys()):
+                news_idx_incache[news] = [idx, -args.max_step_in_cache]
+                
+            data_paths = get_files(dirname=os.path.join(args.root_data_dir,'traindata'),
+                                filename_pat=args.filename_pat)
+            data_paths.sort()
+            dump_args(args)
 
     model = SpeedyFeed(args, bert_model, len(category_dict),
                        len(subcategory_dict))
@@ -147,13 +149,14 @@ def train(local_rank,
     start_time = time.time()
     global_step = 0
     for ep in range(args.epochs):
-        with only_on_main_process(local_rank, barrier):
+        with only_on_main_process(local_rank, barrier) as need:
             # data_files.clear()
-            while len(data_files) > 0:
-                data_files.pop()
-            data_files.extend(data_paths)
-            random.seed(ep)
-            random.shuffle(data_files)
+            if need:
+                while len(data_files) > 0:
+                    data_files.pop()
+                data_files.extend(data_paths)
+                random.seed(ep)
+                random.shuffle(data_files)
 
         dataloader = DataLoaderTrain(
             args=args,
