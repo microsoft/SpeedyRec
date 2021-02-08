@@ -1,17 +1,20 @@
 # SpeedyFeed
+![Python 3.7](https://img.shields.io/badge/python-3.7-green.svg?style=plastic)
 ## Introduction
 SpeedyFeed: On Systematic Speedup of Training Microsoft NewsRecommenders with Pretrained Language Models in the Loop
-## Getting Started
-Basic setup.
+## Requirements
 ```bash
 pip install -r requirements.txt
 ```
+## Data
 See [example_data/README.md](example_data/README.md) for Dataset Format
 
-Run.
+
+## Usage
 ```python
-python run_example.py --root_data_dir ./example_data/  --news_attributes title abstract body --bus_connection True --content_refinement True --max_keyword_freq 100  --drop_encoder_ratio 1 --max_step_in_cache 20  --bucket_num 2  --mode train_test  --world_size 4
+python run_example.py --root_data_dir ./example_data/ --bus_connection True --content_refinement True --max_keyword_freq 100  --drop_encoder_ratio 1 --max_step_in_cache 20  --bucket_num 2  --mode train_test  --world_size -1
 ```
+More parameter information please refer to `src/parameter.py`
 
 > This repo has been populated by an initial template to help get you started. Please
 > make sure to update the content to build a great experience for community-building.
