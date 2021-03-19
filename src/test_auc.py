@@ -22,10 +22,13 @@ from sklearn.metrics import roc_auc_score
 
 def ddp_test_auc(args, news_index, news_vecs):
     logging.info('------start test auc------')
-    mp.spawn(test_auc,
-             args=(news_index, news_vecs, args),
-             nprocs=args.world_size,
-             join=True)
+    if args.world_size > 1:
+        mp.spawn(test_auc,
+                 args=(news_index, news_vecs, args),
+                 nprocs=args.world_size,
+                 join=True)
+    else:
+        test_auc(local_rank=0,news_index=news_index,news_vecs=news_vecs, args=args)
 
 
 def load_model(args):
@@ -35,10 +38,15 @@ def load_model(args):
 
     logging.info('loading model: {}'.format(args.bert_model))
     args, config = init_config(args, TuringNLRv3Config)
-    bert_model = SpeedyModelForRec.from_pretrained(
-        args.model_name_or_path,
-        from_tf=bool('.ckpt' in args.model_name_or_path),
-        config=config)
+
+    if args.pretrained_model_path != 'None':
+        bert_model = SpeedyModelForRec.from_pretrained(
+            args.pretrained_model_path,
+            from_tf=bool('.ckpt' in args.pretrained_model_path),
+            config=config)
+    else:
+        bert_model = SpeedyModelForRec(config)
+
     model = SpeedyFeed(args, bert_model, len(category_dict),
                        len(subcategory_dict))
     model.load_state_dict(checkpoint['model_state_dict'])
@@ -47,7 +55,8 @@ def load_model(args):
 
 def test_auc(local_rank, news_index, news_vecs, args):
     setuplogging()
-    init_process(local_rank, args.world_size)
+    if args.world_size > 1:
+        init_process(local_rank, args.world_size)
 
     if args.enable_gpu:
         os.environ["RANK"] = str(local_rank)
@@ -67,7 +76,6 @@ def test_auc(local_rank, news_index, news_vecs, args):
         ddp_model = model
 
     torch.set_grad_enabled(False)
-
     dataloader = DataLoaderTest(
         news_index=news_index,
         news_scoring=news_vecs,
@@ -78,7 +86,7 @@ def test_auc(local_rank, news_index, news_vecs, args):
         world_size=args.world_size,
         worker_rank=local_rank,
         cuda_device_idx=local_rank,
-        enable_prefetch=True,
+        enable_prefetch=args.enable_prefetch,
         enable_shuffle=True,
         enable_gpu=args.enable_gpu,
     )
@@ -151,23 +159,15 @@ def test_auc(local_rank, news_index, news_vecs, args):
                 CTR5[1].append(ctr5)
                 CTR10[1].append(ctr10)
 
-        if cnt == 0:
+        if (cnt + 1) % args.log_steps == 0 or cnt == 0:
             for i in range(2):
-                print_metrics(
-                    local_rank, 0,
-                    get_mean([
-                        AUC[i], MRR[i], nDCG5[i], nDCG10[i], CTR1[i], CTR3[i],
-                        CTR5[i], CTR10[i]
-                    ]))
-        if (cnt + 1) % args.log_steps == 0:
-            for i in range(2):
-                print_metrics(local_rank, (cnt + 1) * args.batch_size, get_mean([AUC[i], MRR[i], nDCG5[i], \
+                print_metrics(local_rank, (cnt + 1) * args.test_batch_size, get_mean([AUC[i], MRR[i], nDCG5[i], \
                                                                                nDCG10[i], CTR1[i], CTR3[i], CTR5[i],
                                                                                CTR10[i]]))
     dataloader.join()
 
     for i in range(2):
-        print_metrics(local_rank, (cnt + 1) * args.batch_size, get_mean([AUC[i], MRR[i], nDCG5[i], \
+        print_metrics(local_rank, (cnt + 1) * args.test_batch_size, get_mean([AUC[i], MRR[i], nDCG5[i], \
                                                                        nDCG10[i], CTR1[i], CTR3[i], CTR5[i],
                                                                        CTR10[i]]))
     cleanup_process()

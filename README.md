@@ -1,7 +1,7 @@
-# SpeedyFeed
-![Python 3.7](https://img.shields.io/badge/python-3.7-green.svg?style=plastic)
+# SpeedyRec
+
 ## Introduction
-SpeedyFeed: On Systematic Speedup of Training Microsoft NewsRecommenders with Pretrained Language Models in the Loop
+Pytorch Implention for [Training large-scale news recommenders with pretrained language models in the loop](https://arxiv.org/pdf/2102.09268.pdf)
 ## Requirements
 ```bash
 pip install -r requirements.txt
@@ -12,19 +12,10 @@ See [example_data/README.md](example_data/README.md) for Dataset Format
 
 ## Usage
 ```python
-python run_example.py --root_data_dir ./example_data/ --bus_connection True --content_refinement True --max_keyword_freq 100  --drop_encoder_ratio 1 --max_step_in_cache 20  --bucket_num 2  --mode train_test  --world_size -1
+python run_example.py --root_data_dir ./example_data/ --bus_connection True --content_refinement True --max_keyword_freq 100  --beta_for_cache 0.002 --max_step_in_cache 20  --mode train_test  --world_size -1 --pretrained_model_path None
 ```
 More parameter information please refer to `src/parameter.py`
 
-> This repo has been populated by an initial template to help get you started. Please
-> make sure to update the content to build a great experience for community-building.
-
-As the maintainer of this project, please make a few updates:
-
-- Improving this README.MD file to provide a great experience
-- Updating SUPPORT.MD with content about this project's support experience
-- Understanding the security reporting process in SECURITY.MD
-- Remove this section from the README
 
 ## Contributing
 

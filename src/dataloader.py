@@ -29,7 +29,8 @@ class DataLoaderTrain(IterableDataset):
                  world_size,
                  news_features,
                  enable_prefetch=True,
-                 enable_prefetch_stream=False):
+                 enable_prefetch_stream=False,
+                 global_step=0):
         '''
         Args:
             args: parameters
@@ -42,6 +43,7 @@ class DataLoaderTrain(IterableDataset):
             news_features(dict):{news_id:(segments_ids, segments_mask, key_position, key_frequence, elements)}
         '''
         self.args = args
+        self.beta_for_cache = args.beta_for_cache
         self.data_files = data_files
         self.news_idx_incache = news_idx_incache
         self.prefetch_step = prefetch_step
@@ -51,7 +53,7 @@ class DataLoaderTrain(IterableDataset):
         self.news_features = news_features
         self.enable_prefetch = enable_prefetch
         self.enable_prefetch_stream = enable_prefetch_stream
-        self.global_step = 0
+        self.global_step = global_step
 
     def __iter__(self):
         """Implement IterableDataset method to provide data iterator."""
@@ -149,11 +151,11 @@ class DataLoaderTrain(IterableDataset):
         while sum(self.prefetch_step) != self.prefetch_step[self.local_rank] * self.world_size:
             if self.end.value: break
 
-    def drop_encoder_prob(self,prob, step):
-        return prob - prob*math.exp(-100*step/self.args.schedule_step)
+    def drop_encoder_prob(self, step):
+        return 1 - math.exp(-step*self.beta_for_cache)
 
     def update_use_cache(self):
-        if random.random() < self.drop_encoder_prob(self.args.drop_encoder_ratio, self.global_step):
+        if random.random() < self.drop_encoder_prob(self.global_step):
             self.use_cache = True
         else:
             self.use_cache = False
@@ -341,7 +343,7 @@ class DataLoaderTest():
 
         self.npratio = args.npratio
         self.user_log_length = args.user_log_length
-        self.batch_size = args.batch_size
+        self.batch_size = args.test_batch_size
 
         self.worker_rank = worker_rank
         self.world_size = world_size

@@ -3,11 +3,13 @@
 
 import pickle
 import os
+import logging
 from multiprocessing import Process,Manager,cpu_count
 from nltk.corpus import stopwords
 from transformers import BertTokenizer
 from .refinement import content_refinement
-import logging
+from .utils import setuplogging
+setuplogging()
 
 def read_news(args,root_data_dir):
     '''
@@ -30,7 +32,7 @@ def read_news(args,root_data_dir):
 
 def check_preprocess_result(args,root_data_dir,mode='train',category=None,subcategory=None):
     if args.num_worker_preprocess == -1:
-        preprocess_world_size = (cpu_count())//2 - 1
+        preprocess_world_size = cpu_count()//2 - 1
     else:
         preprocess_world_size = args.num_worker_preprocess
     assert preprocess_world_size>0
@@ -40,7 +42,7 @@ def check_preprocess_result(args,root_data_dir,mode='train',category=None,subcat
     else:
         data_path = os.path.join(root_data_dir, 'processed_news_l{}.pkl'.format(args.seg_length))
     if not os.path.exists(data_path):
-        if args.content_refinement and not os.path.exists(os.path.join(root_data_dir, '/refinement_k2={}.pkl'.format(args.k2_for_BM25))):
+        if args.content_refinement and not os.path.exists(os.path.join(root_data_dir, 'refinement_k2={}.pkl'.format(args.k2_for_BM25))):
             logging.info('start content refinement')
             content_refinement(args,preprocess_world_size,root_data_dir)
         logging.info('start preprocess doc features')
@@ -51,6 +53,8 @@ def mul_prepocess(args,world_size,root_data_dir,mode='train',category=None,subca
     '''
     process DocFeatures with multi-process
     '''
+    # world_size = 5
+    setuplogging()
     tokenizer = BertTokenizer.from_pretrained(
         args.tokenizer_name if args.tokenizer_name else args.model_name_or_path,
         do_lower_case=args.do_lower_case)
@@ -80,6 +84,7 @@ def mul_prepocess(args,world_size,root_data_dir,mode='train',category=None,subca
         p.start()
         process_list.append(p)
     logging.info('Waiting for all subprocesses done...')
+    print('-----------------',world_size)
 
     for res in process_list:
         res.join()
@@ -103,6 +108,7 @@ def mul_prepocess(args,world_size,root_data_dir,mode='train',category=None,subca
     else:
         save_path = os.path.join(root_data_dir, 'processed_news_l{}.pkl'.format(args.seg_length))
 
+    print(len(processed_news['news_features']))
     with open(save_path, 'wb') as f:
         pickle.dump(processed_news, f)
 
@@ -211,6 +217,7 @@ def process_news(local_rank,
                 element.append(subcategories[subcategory])
 
             news_feature[doc_id] = (tokens,seg_mask,key_position,key_freq,element)
+    logging.info(f'Process: {local_rank} have finished')
 
 
 def refined_content_tokenizer(text,

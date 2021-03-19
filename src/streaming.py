@@ -123,10 +123,7 @@ class StreamSamplerTrain:
 
 class StreamReader:
     def __init__(self, data_paths, batch_size):
-        # tf.config.experimental.set_visible_devices([], device_type="GPU")
-        # logging.info(f"visible_devices:{tf.config.experimental.get_visible_devices()}")
         path_len = len(data_paths)
-        # logging.info(f"[StreamReader] path_len:{path_len}, paths: {data_paths}")
         dataset = tf.data.Dataset.list_files(data_paths).interleave(
             lambda x: tf.data.TextLineDataset(x),
             cycle_length=path_len,
@@ -140,7 +137,6 @@ class StreamReader:
         self.session = None
 
     def reset(self):
-        # print(f"StreamReader reset(), {self.session}, pid:{threading.currentThread()}")
         if self.session:
             self.session.close()
         self.session = tf.Session()

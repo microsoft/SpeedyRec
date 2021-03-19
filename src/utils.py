@@ -44,6 +44,9 @@ def setuplogging():
 
 
 def init_process(rank, world_size):
+    os.environ['MASTER_ADDR'] = 'localhost'
+    os.environ['MASTER_PORT'] = '12355'
+
     # initialize the process group
     os.environ["RANK"] = str(rank)
     dist.init_process_group("nccl", rank=rank, world_size=world_size,)
@@ -82,9 +85,11 @@ def only_on_main_process(local_rank, barrier):
     if local_rank == 0:
         barrier()
 
+def init_world_size(world_size):
+    assert world_size <= torch.cuda.device_count()
+    return torch.cuda.device_count() if world_size==-1 else world_size
+
 def init_config(args,Configclass):
-    if args.world_size == -1:
-        args.world_size = torch.cuda.device_count()
     config = Configclass.from_pretrained(
         args.config_name if args.config_name else args.model_name_or_path,
         output_hidden_states=True)

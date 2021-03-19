@@ -143,7 +143,7 @@ def get_similarity(item_embedding):
 
 def test_recall(args,news_index,news_embed):
     logging.info('------start test recll------')
-    user_batch_size = 512
+    user_batch_size = args.test_batch_size
     hnswlib_batch_size = 5000
     mode = 'ip'  # 'cosine'
 
@@ -157,7 +157,7 @@ def test_recall(args,news_index,news_embed):
     pad_news = np.zeros((1,news_embed.shape[-1]))
     news_embed = np.concatenate([news_embed,pad_news],0)
 
-    date_recall = list(range(1,3))
+    date_recall = list(range(1,32))
     data_dir = os.path.join(args.root_data_dir,'testdata/daily_recall')
 
     for date in date_recall:
@@ -183,7 +183,7 @@ def test_recall(args,news_index,news_embed):
         logging.info(info)
 
     res = res / len(date_recall)
-    info = '8--:simi;{} recall20:{},recall50:{},recall100:{},recall200:{}'.format(simi,
+    info = 'Avg. simi:{} recall20:{},recall50:{},recall100:{},recall200:{}'.format(simi,
                                                                                    res[0], res[1],
                                                                                    res[2], res[3])
     logging.info(info)

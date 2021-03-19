@@ -29,12 +29,13 @@ def ddp_train(args):
     '''
     Distributed training
     '''
-    os.environ['MASTER_ADDR'] = 'localhost'
-    os.environ['MASTER_PORT'] = '12355'
+    # os.environ['MASTER_ADDR'] = 'localhost'
+    # os.environ['MASTER_PORT'] = '12355'
     setuplogging()
     Path(args.model_dir).mkdir(parents=True, exist_ok=True)
     args = check_args_environment(args)
     logging.info('-----------start train------------')
+
     if args.world_size > 1:
         cache = np.zeros((args.cache_num, args.news_dim))
         global_cache = mp.Manager().list([cache])
@@ -84,10 +85,13 @@ def train(local_rank,
     logging.info('loading model: {}'.format(args.bert_model))
 
     args, config = init_config(args, TuringNLRv3Config)
-    bert_model = SpeedyModelForRec.from_pretrained(
-        args.model_name_or_path,
-        from_tf=bool('.ckpt' in args.model_name_or_path),
-        config=config)
+    if args.pretrained_model_path != 'None':
+        bert_model = SpeedyModelForRec.from_pretrained(
+            args.pretrained_model_path,
+            from_tf=bool('.ckpt' in args.pretrained_model_path),
+            config=config)
+    else:
+        bert_model = SpeedyModelForRec(config)
 
     if args.freeze_bert:
         logging.info('Freeze the parameters of {}'.format(args.bert_model))
@@ -168,7 +172,8 @@ def train(local_rank,
             world_size=args.world_size,
             news_features=news_features,
             enable_prefetch=args.enable_prefetch,
-            enable_prefetch_stream=args.enable_prefetch_stream)
+            enable_prefetch_stream=args.enable_prefetch_stream,
+            global_step=global_step)
 
         loss = 0.0
         usernum = 0
@@ -200,7 +205,7 @@ def train(local_rank,
             optimizer.step()
 
             #update the cache
-            if args.drop_encoder_ratio > 0:
+            if args.max_step_in_cache > 0:
                 encode_vecs = encode_vecs.detach().cpu().numpy()
                 cache[update_cache] = encode_vecs
 

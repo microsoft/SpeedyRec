@@ -189,6 +189,8 @@ class BertEncoder(nn.Module):
         self.output_hidden_states = config.output_hidden_states
         self.layer = nn.ModuleList([BertLayer(config) for _ in range(config.num_hidden_layers)])
 
+        # self.output_hidden_states = True
+
     def forward(self, hidden_states, attention_mask, rel_pos=None, seg_num=0):
         all_hidden_states = ()
         all_attentions = ()
@@ -215,6 +217,11 @@ class BertEncoder(nn.Module):
                 layer_outputs = layer_module(hidden_states, attention_mask=attention_mask, rel_pos=rel_pos)
 
             hidden_states = layer_outputs[0]
+
+            # pre = all_hidden_states[-1][:, self.bus_num:]
+            # cur = hidden_states[:, self.bus_num:]
+            # print(i,torch.mean(torch.abs(cur-pre)).item(), torch.mean(torch.cosine_similarity(pre,cur,dim=-1)).item())
+
 
             if self.output_attentions:
                 all_attentions = all_attentions + (layer_outputs[1],)

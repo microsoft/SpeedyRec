@@ -11,7 +11,7 @@ from torch.multiprocessing import Pool, set_start_method
 from LanguageModels.SpeedyModel import SpeedyModelForRec
 from LanguageModels.configuration_tnlrv3 import TuringNLRv3Config
 
-from .utils import init_config
+from .utils import init_config, setuplogging
 from .preprocess import read_news, check_preprocess_result
 from .speedyfeed import SpeedyFeed
 
@@ -56,7 +56,7 @@ def news_feature_batch(news_feature,
         yield segments, token_masks, seg_masks, key_position, fre_cnt, elements
 
 
-def sigle_process_infer(local_rank,local_features, checkpoint,
+def sigle_process_infer(local_rank, local_features, checkpoint,
           args):
     '''
     Args:
@@ -70,9 +70,14 @@ def sigle_process_infer(local_rank,local_features, checkpoint,
         device = torch.device("cpu")
 
     args, config = init_config(args,TuringNLRv3Config)
-    bert_model = SpeedyModelForRec.from_pretrained(args.model_name_or_path,
-                                                   from_tf=bool('.ckpt' in args.model_name_or_path),
-                                                   config=config)
+    if args.pretrained_model_path != 'None':
+        bert_model = SpeedyModelForRec.from_pretrained(
+            args.pretrained_model_path,
+            from_tf=bool('.ckpt' in args.pretrained_model_path),
+            config=config)
+    else:
+        bert_model = SpeedyModelForRec(config)
+
     model = SpeedyFeed(args, bert_model, len(checkpoint["category_dict"]), len(checkpoint["subcategory_dict"]))
     model.load_state_dict(checkpoint['model_state_dict'])
 
@@ -80,7 +85,7 @@ def sigle_process_infer(local_rank,local_features, checkpoint,
     model.eval()
 
     news_vecs = []
-    batch_size = args.batch_size//(args.seg_num*args.seg_length)
+    batch_size = args.batch_size//(args.seg_length)
     with torch.no_grad():
         d = tqdm(news_feature_batch(local_features, batch_size, args.seg_num, args.seg_length),
                  total=(int(len(local_features) / batch_size)))
@@ -105,10 +110,11 @@ def sigle_process_infer(local_rank,local_features, checkpoint,
 
 
 def mul_infer(args):
+    setuplogging()
     set_start_method('spawn',force=True)
     root_data_dir = os.path.join(args.root_data_dir,'testdata')
 
-    checkpoint = torch.load(os.path.join(args.model_dir, args.load_ckpt_name))
+    checkpoint = torch.load(os.path.join(args.model_dir, args.load_ckpt_name),map_location=torch.device('cpu'))
     subcategory_dict = checkpoint['subcategory_dict']
     category_dict = checkpoint['category_dict']
     logging.info('load ckpt: {}'.format(args.load_ckpt_name))

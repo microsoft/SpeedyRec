@@ -125,7 +125,6 @@ class TextEncoder(torch.nn.Module):
         self.additive_attention = AdditiveAttention(num_attention_heads * 20,
                                                     query_vector_dim)
 
-
     def forward(self,segments,token_masks,seg_masks,key_position=None,fre_cnt=None):
         """
         Returns:
