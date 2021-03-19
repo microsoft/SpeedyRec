@@ -21,14 +21,6 @@ if __name__ == "__main__":
 
     if 'test' in args.mode:
         news_index, news_vecs = mul_infer(args)
-        # import pickle
-        # np.save('news_vecs',news_vecs)
-        # with open('news_index.pkl', 'wb') as f:
-        #     pickle.dump(news_index, f)
-        #
-        # news_vecs = np.load('news_vecs.npy')
-        # with open('news_index.pkl', 'rb') as f:
-        #     news_index = pickle.load(f)
 
         if 'ranking' in metrics:
             assert os.path.exists(os.path.join(args.root_data_dir,'testdata/impressions'))
