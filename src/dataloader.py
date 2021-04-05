@@ -24,6 +24,7 @@ class DataLoaderTrain(IterableDataset):
                  data_files,
                  news_idx_incache,
                  prefetch_step,
+                 prefetch_step2,
                  end,
                  local_rank,
                  world_size,
@@ -37,6 +38,7 @@ class DataLoaderTrain(IterableDataset):
             data_files(shared list): the paths of train data, storaged in a shared list
             news_idx_incache(shared dict): {news_id:(index in cache, encoded step)}
             prefetch_step(shared list): sync the dataloaders
+            prefetch_step2(shared list): avoid to skip the data of last step
             end(shared bool value): If it is True, stop all data processes
             local_rank(int): The rank of current process
             world_size(int): The number of processes
@@ -47,6 +49,7 @@ class DataLoaderTrain(IterableDataset):
         self.data_files = data_files
         self.news_idx_incache = news_idx_incache
         self.prefetch_step = prefetch_step
+        self.prefetch_step2 = prefetch_step2
         self.end = end
         self.local_rank = local_rank
         self.world_size = world_size
@@ -85,6 +88,11 @@ class DataLoaderTrain(IterableDataset):
 
     def _produce(self):
         for address_cache,update_cache,batch in self.dynamic_batch():
+            self.sync_prefetch_step(self.prefetch_step)
+            if self.end.value:
+                break
+            self.sync_prefetch_step(self.prefetch_step2) # Avoid to discard the data of last batch
+
             self.outputs.put((address_cache, update_cache, batch))
             self.aval_count += 1
         self.pool.shutdown(wait=False)
@@ -128,13 +136,8 @@ class DataLoaderTrain(IterableDataset):
                         if len(block_encode_set[i]) == 0:
                             break
                         address_cache,update_cache,batch = self.gen_batch_for_two_stage(block_encode_set[i],block_cache_set[i],blocks[i],block_max_length[i],self.global_step)
-
-                        self.prefetch_step[self.local_rank] += 1
-                        self.synchronization()
-                        if self.end.value:
-                            break
-
                         self.global_step += 1
+
                         yield address_cache,update_cache,batch
 
                         block_encode_set[i] = set();block_cache_set[i] = set();blocks[i]=[];block_max_length[i]=0
@@ -147,8 +150,8 @@ class DataLoaderTrain(IterableDataset):
                     break
         self.end.value = True
 
-    def synchronization(self):
-        while sum(self.prefetch_step) != self.prefetch_step[self.local_rank] * self.world_size:
+    def sync_prefetch_step(self, prefetch_step):
+        while sum(prefetch_step) != prefetch_step[self.local_rank] * self.world_size:
             if self.end.value: break
 
     def drop_encoder_prob(self, step):

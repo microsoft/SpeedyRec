@@ -41,10 +41,11 @@ def ddp_train(args):
         global_cache = mp.Manager().list([cache])
         news_idx_incache = mp.Manager().dict()
         global_prefetch_step = mp.Manager().list([0] * args.world_size)
+        global_prefetch_step2 = mp.Manager().list([0] * args.world_size)
         data_files = mp.Manager().list([])
         end = mp.Manager().Value('b', False)
         mp.spawn(train,
-                 args=(args, global_cache, news_idx_incache, global_prefetch_step, end, data_files),
+                 args=(args, global_cache, news_idx_incache, global_prefetch_step, global_prefetch_step2, end, data_files),
                  nprocs=args.world_size,
                  join=True)
     else:
@@ -52,15 +53,17 @@ def ddp_train(args):
                            args.news_dim))]
         news_idx_incache = {}
         prefetch_step = [0]
+        prefetch_step2 = [0]
         data_files = []
         end = mp.Manager().Value('b', False)
-        train(0, args, cache, news_idx_incache, prefetch_step, end, data_files, dist_training=False)
+        train(0, args, cache, news_idx_incache, prefetch_step, prefetch_step2, end, data_files, dist_training=False)
 
 def train(local_rank,
           args,
           cache,
           news_idx_incache,
           prefetch_step,
+          prefetch_step2,
           end,
           data_files, 
           dist_training=True):
@@ -167,6 +170,7 @@ def train(local_rank,
             data_files=data_files,
             news_idx_incache=news_idx_incache,
             prefetch_step=prefetch_step,
+            prefetch_step2=prefetch_step2,
             end=end,
             local_rank=local_rank,
             world_size=args.world_size,
