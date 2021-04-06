@@ -84,7 +84,11 @@ class DataLoaderTrain(IterableDataset):
             self.aval_count -= 1
             return next_batch
         else:
-            return self.outputs.__next__()
+            next_data = self.outputs.__next__()
+            self.sync_prefetch_step(self.prefetch_step)
+            if self.end.value:
+                raise StopIteration
+            return next_data
 
     def _produce(self):
         for address_cache,update_cache,batch in self.dynamic_batch():
@@ -151,6 +155,7 @@ class DataLoaderTrain(IterableDataset):
         self.end.value = True
 
     def sync_prefetch_step(self, prefetch_step):
+        prefetch_step[self.local_rank] += 1
         while sum(prefetch_step) != prefetch_step[self.local_rank] * self.world_size:
             if self.end.value: break
 

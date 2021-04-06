@@ -87,7 +87,9 @@ def sigle_process_infer(local_rank, local_features, checkpoint,
     news_vecs = []
     batch_size = args.batch_size//(args.seg_length)
     with torch.no_grad():
-        d = tqdm(news_feature_batch(local_features, batch_size, args.seg_num, args.seg_length),
+        d = tqdm(news_feature_batch(local_features, batch_size, args.seg_num, args.seg_length,
+                                    content_refinement=args.content_refinement,
+                                    max_keyword_freq=args.max_keyword_freq),
                  total=(int(len(local_features) / batch_size)))
         for input_ids in d:
             segments, token_masks, seg_masks, key_position, fre_cnt, elements = input_ids
@@ -144,7 +146,9 @@ def mul_infer(args):
     sigle_size = news_num//args.world_size
     for rank in range(args.world_size):
         start = sigle_size*rank
-        end = min(sigle_size*(rank+1),news_num)
+        end = sigle_size*(rank+1)
+        if rank == args.world_size -1:
+            end = news_num
         local_features = news_feature[start:end]
         result = pool.apply_async(sigle_process_infer, args=(rank, local_features, checkpoint, args))
         results.append(result)

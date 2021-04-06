@@ -141,9 +141,8 @@ class TextEncoder(torch.nn.Module):
             token_masks = token_masks.view(batch_seg_num,seq_length+seg_num)
 
         last_hidden_states = self.bert_model(segments, token_masks, position_ids=key_position, fre_cnt=fre_cnt, seg_num=seg_num)[0] #BS S+L D
-        # print(last_hidden_states)
         if self.bus_num>0:
-            station_emb = last_hidden_states[:, seg_num]  # BS D
+            station_emb = last_hidden_states[:, seg_num].clone()  # BS D
             station_emb = station_emb.view(-1, seg_num, last_hidden_states.size(-1)) #B S D
             station_emb = station_emb.unsqueeze(1).repeat(1,seg_num, 1, 1)  # B S S D
             station_emb = station_emb.view(batch_seg_num,seg_num,last_hidden_states.size(-1)) #BS S D
@@ -255,6 +254,9 @@ class UserEncoder(torch.nn.Module):
         We propose autoregressive user modeling for more efficient utilization of user history,
         where all of the news clicks about a user can be predicted at one-shot of news encoding.
         For a click history of length L, this function generates L-1 user vectors for predicting the last L-1 clicks.
+        args:
+        vec: B L D
+        mask: B L
         '''
 
         if self.args.add_pad:
@@ -272,7 +274,7 @@ class UserEncoder(torch.nn.Module):
         auto_mask = autor_mask.unsqueeze(0).repeat(B, 1, 1)  #B G L
 
         if not self.args.use_pad:
-            auto_mask = torch.mul(autor_mask,mask[:,:-1].unsqueeze(2).repeat(1,1,L)) #B G L
+            auto_mask = torch.mul(autor_mask, mask[:,:-1].unsqueeze(2).repeat(1,1,L)) #B G L
 
         vec_repeat = vec.unsqueeze(1).repeat(1, G, 1, 1) #B G L L
 

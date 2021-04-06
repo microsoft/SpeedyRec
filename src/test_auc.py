@@ -113,8 +113,8 @@ def test_auc(local_rank, news_index, news_vecs, args):
                              dim=-1).to(torch.device("cpu")).detach().numpy()
 
         if args.enable_gpu:
-            log_vecs = log_vecs.cuda(non_blocking=True)
-            log_mask = log_mask.cuda(non_blocking=True)
+            log_vecs = log_vecs.cuda(device=device, non_blocking=True)
+            log_mask = log_mask.cuda(device=device, non_blocking=True)
 
         if args.world_size > 1:
             user_vecs = ddp_model.module.user_encoder.infer_user_vec(
@@ -170,4 +170,6 @@ def test_auc(local_rank, news_index, news_vecs, args):
         print_metrics(local_rank, (cnt + 1) * args.test_batch_size, get_mean([AUC[i], MRR[i], nDCG5[i], \
                                                                        nDCG10[i], CTR1[i], CTR3[i], CTR5[i],
                                                                        CTR10[i]]))
-    cleanup_process()
+
+    if args.world_size > 1:
+        cleanup_process()

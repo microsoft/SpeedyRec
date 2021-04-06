@@ -69,7 +69,7 @@ def parse_args():
     # bert_model
     parser.add_argument("--bert_model",type=str,default='speedymodel',)
     parser.add_argument("--do_lower_case", type=utils.str2bool, default=True)
-    parser.add_argument("--pretrained_model_path", default="./example_data/pretrainedModel/unilm2-base-uncased.bin", type=str,
+    parser.add_argument("--pretrained_model_path", default="./example_data/pretrainedModel/base-uncased.bin", type=str,
                         help="Path to pre-trained model. ")
     parser.add_argument("--config_name", default="./example_data/pretrainedModel/uncased-config.json", type=str,
                         help="Pretrained config name or path if not the same as model_name")

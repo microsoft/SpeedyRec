@@ -201,7 +201,7 @@ class BertEncoder(nn.Module):
                 all_hidden_states = all_hidden_states + (hidden_states,)
 
             if self.bus_num > 0 and i > 0:
-                station_emb = hidden_states[:, seg_num]  # BS D
+                station_emb = hidden_states[:, seg_num].clone()# BS D
                 station_emb = station_emb.view(batch_size, seg_num, emb_dim)  # B S D
                 station_emb = station_emb.unsqueeze(1).repeat(1, seg_num, 1, 1)  # B S S D
                 station_emb = station_emb.view(batch_seg_num, seg_num, emb_dim)  # BS S D
