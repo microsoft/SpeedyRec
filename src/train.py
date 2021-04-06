@@ -13,6 +13,7 @@ import torch.distributed as dist
 import torch.multiprocessing as mp
 from pathlib import Path
 import numpy as np
+from operator import itemgetter
 
 from LanguageModels.SpeedyModel import SpeedyModelForRec
 from LanguageModels.configuration_tnlrv3 import TuringNLRv3Config
@@ -37,8 +38,7 @@ def ddp_train(args):
     logging.info('-----------start train------------')
 
     if args.world_size > 1:
-        cache = np.zeros((args.cache_num, args.news_dim))
-        global_cache = mp.Manager().list([cache])
+        global_cache = mp.Manager().dict()
         news_idx_incache = mp.Manager().dict()
         global_prefetch_step = mp.Manager().list([0] * args.world_size)
         global_prefetch_step2 = mp.Manager().list([0] * args.world_size)
@@ -49,14 +49,13 @@ def ddp_train(args):
                  nprocs=args.world_size,
                  join=True)
     else:
-        cache = [np.zeros((args.cache_num,
-                           args.news_dim))]
-        news_idx_incache = {}
-        prefetch_step = [0]
-        prefetch_step2 = [0]
-        data_files = []
+        global_cache = mp.Manager().dict()
+        news_idx_incache = mp.Manager().dict()
+        global_prefetch_step = mp.Manager().list([0] * args.world_size)
+        global_prefetch_step2 = mp.Manager().list([0] * args.world_size)
+        data_files = mp.Manager().list([])
         end = mp.Manager().Value('b', False)
-        train(0, args, cache, news_idx_incache, prefetch_step, prefetch_step2, end, data_files, dist_training=False)
+        train(0, args, global_cache, news_idx_incache, global_prefetch_step, global_prefetch_step2, end, data_files, dist_training=False)
 
 def train(local_rank,
           args,
@@ -78,7 +77,6 @@ def train(local_rank,
         data_files(shared list): the paths of train data, storaged in a shared list
     '''
     setuplogging()
-    cache = cache[0]
 
     if dist_training:
         init_process(local_rank, args.world_size)
@@ -118,13 +116,12 @@ def train(local_rank,
     logging.info('news_num:{}'.format(len(news_features)))
 
     #init the news_idx_incache and data_paths
-    assert args.cache_num >= len(news_features)
-    
     with only_on_main_process(local_rank, barrier) as need:
         if need:
             for idx, news in enumerate(news_features.keys()):
                 news_idx_incache[news] = [idx, -args.max_step_in_cache]
-                
+                cache[idx] = [0.0]*args.news_dim
+
             data_paths = get_files(dirname=os.path.join(args.root_data_dir,'traindata'),
                                 filename_pat=args.filename_pat)
             data_paths.sort()
@@ -195,8 +192,11 @@ def train(local_rank,
 
             #Get news vecs from cache.
             if address_cache is not None:
+                cache_vec = itemgetter(*address_cache)(cache)
                 cache_vec = torch.FloatTensor(
-                    cache[address_cache]).cuda(non_blocking=True)
+                    cache_vec).cuda(device=device, non_blocking=True)
+                if len(cache_vec.shape)==1:
+                    cache_vec = cache_vec.unsqueeze(0)
             else:
                 cache_vec = None
 
@@ -211,7 +211,8 @@ def train(local_rank,
             #update the cache
             if args.max_step_in_cache > 0:
                 encode_vecs = encode_vecs.detach().cpu().numpy()
-                cache[update_cache] = encode_vecs
+                for inx, vec in zip(update_cache, encode_vecs):
+                    cache[inx] = vec
 
             optimizer.param_groups[0]['lr'] = args.pretrain_lr*warmup_linear(args,global_step+1)  #* world_size
             optimizer.param_groups[1]['lr'] = args.lr*warmup_linear(args,global_step+1)   #* world_size
