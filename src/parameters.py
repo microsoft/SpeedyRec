@@ -27,7 +27,7 @@ def parse_args():
     parser.add_argument("--model_dir", type=str, default='./model')
     parser.add_argument("--savename", type=str, default='speedy')
     parser.add_argument("--enable_prefetch", type=utils.str2bool, help='whether to prefetch data for GPU' ,default=True)
-    parser.add_argument("--enable_prefetch_stream", type=utils.str2bool, default=False)
+    parser.add_argument("--enable_prefetch_stream", type=utils.str2bool, default=True)
     parser.add_argument("--num_worker_preprocess", type=int, help='defautl to use half of cores in data preprocess', default=-1)
 
     #model
@@ -69,7 +69,7 @@ def parse_args():
     # bert_model
     parser.add_argument("--bert_model",type=str,default='speedymodel',)
     parser.add_argument("--do_lower_case", type=utils.str2bool, default=True)
-    parser.add_argument("--pretrained_model_path", default="./example_data/pretrainedModel/base-uncased.bin", type=str,
+    parser.add_argument("--pretrained_model_path", default="./example_data/pretrainedModel/unilm2-base-uncased.bin", type=str,
                         help="Path to pre-trained model. ")
     parser.add_argument("--config_name", default="./example_data/pretrainedModel/uncased-config.json", type=str,
                         help="Pretrained config name or path if not the same as model_name")

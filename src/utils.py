@@ -132,7 +132,6 @@ def check_args_environment(args):
         logging.warning("Cuda is not available, " \
                         "related options will be disabled")
     args.enable_gpu = torch.cuda.is_available() & args.enable_gpu
-    
     return args
 
 def acc(y_true, y_hat):

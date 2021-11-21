@@ -91,16 +91,23 @@ class DataLoaderTrain(IterableDataset):
             return next_data
 
     def _produce(self):
-        for address_cache,update_cache,batch in self.dynamic_batch():
-            self.sync_prefetch_step(self.prefetch_step)
-            if self.end.value:
-                break
-            self.sync_prefetch_step(self.prefetch_step2) # Avoid to discard the data of last batch
+        try:
+            for address_cache,update_cache,batch in self.dynamic_batch():
+                self.sync_prefetch_step(self.prefetch_step)
+                if self.end.value:
+                    break
+                self.sync_prefetch_step(self.prefetch_step2) # Avoid to discard the data of last batch
 
-            self.outputs.put((address_cache, update_cache, batch))
-            self.aval_count += 1
-        self.pool.shutdown(wait=False)
-        raise
+                self.outputs.put((address_cache, update_cache, batch))
+                self.aval_count += 1
+            self.pool.shutdown(wait=False)
+            raise
+        except:
+            error_type, error_value, error_trace = sys.exc_info()
+            traceback.print_tb(error_trace)
+            logging.info(error_value)
+            self.pool.shutdown(wait=False)
+            raise
 
     def dynamic_batch(self):
         '''
