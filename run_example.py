@@ -1,14 +1,12 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT License.
 
-import sys
-sys.path.append('./')
-from src.parameters import parse_args
-from src.train import *
-from src.utils import *
-from src.infer_news_vecs import mul_infer
-from src.test_auc import ddp_test_auc
-from src.test_recall import test_recall
+from speedy.train import *
+from speedy.utils import *
+from speedy.parameters import parse_args
+from speedy.infer_news_vecs import mul_infer
+from speedy.test_auc import ddp_test_auc
+from speedy.test_recall import test_recall
 
 if __name__ == "__main__":
     metrics = ['ranking','recall']
