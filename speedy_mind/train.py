@@ -75,6 +75,10 @@ def train(local_rank,
                 data_paths.sort()
 
         model = MLNR(args)
+        if 'speedymind_ckpts' in args.pretrained_model_path:
+            ckpt = torch.load(os.path.join(args.pretrained_model_path, 'pytorch_model.bin'))
+            model.load_state_dict(ckpt['model_state_dict'])
+        
         model = model.to(device)
         rest_param = filter(
             lambda x: id(x) not in list(map(id, model.news_encoder.unicoder.parameters())),
