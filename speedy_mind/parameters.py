@@ -13,7 +13,7 @@ def parse_args():
     )
 
     parser.add_argument("--filename_pat", type=str, default="ProtoBuf_*.tsv")
-    parser.add_argument("--model_dir", type=str, default='./speedy/model')
+    parser.add_argument("--model_dir", type=str, default='./saved_models/')
     parser.add_argument("--npratio", type=int, default=1)
     parser.add_argument("--enable_gpu", type=utils.str2bool, default=True)
     parser.add_argument("--enable_shuffle", type=utils.str2bool, default=True)
@@ -23,13 +23,13 @@ def parse_args():
     parser.add_argument("--batch_size", type=int, default=64)
 
     # model training
-    parser.add_argument("--epochs", type=int, default=1)
+    parser.add_argument("--epochs", type=int, default=6)
     parser.add_argument("--lr", type=float, default=0.0001)
     parser.add_argument(
         "--news_attributes",
         type=str,
         nargs='+',
-        default=['title'],
+        default=['title', 'abstract'],
         choices=['title', 'abstract', 'body', 'category', 'domain', 'subcategory'])
 
     parser.add_argument("--num_words_title", type=int, default=32)
@@ -89,7 +89,6 @@ def parse_args():
     parser.add_argument("--num_hidden_layers", type=int, default=-1)
 
     parser.add_argument("--use_pretrain_news_encoder", type=utils.str2bool, default=False)
-    parser.add_argument("--pretrain_news_encoder_path", type=str, default='./speedy/pretrain_news_encoder/epoch-1-226000.pt')
     parser.add_argument("--freeze_pretrain_news_encoder", type=utils.str2bool, default=False)
 
     #new parameters for speedyrec

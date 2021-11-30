@@ -58,8 +58,7 @@ def prediction(model, args, device, category_dict, subcategory_dict):
                 log_mask = log_mask.cuda(device=device, non_blocking=True)
 
             user_vecs = model.user_encoder(
-                log_vecs, log_mask,
-                user_log_mask=True).to(torch.device("cpu")).detach().numpy()
+                log_vecs, log_mask, user_log_mask=True).to(torch.device("cpu")).detach().numpy()
 
             for id, user_vec, news_vec in zip(
                     impids, user_vecs, candidate_vec):

@@ -14,6 +14,7 @@ See [example_data/README.md](example_data/README.md) for Dataset Format
 ```
 python run_example.py --root_data_dir ./example_data/  --bus_connection True --content_refinement True --max_keyword_freq 100  --beta_for_cache 0.002 --max_step_in_cache 20  --mode train_test  --world_size 4 --pretrained_model_path None
 ```
+This command will train the SpeedyRec and test the results of AUC and Recall automatically.  
 More parameter information please refer to `src/parameter.py`
 
 ## Examples

@@ -17,12 +17,13 @@ Script `data_generation.py` can help you to generate the data files which meet t
 ```
 python data_generation.py --raw_data_path {path to your decompressed data}
 ```
+The processed data will be saved to `./data/speedy_data/`.
 
 ## Training 
 ```
 python train.py \
---pretrained_model_path ./unilm_ckpt/ \
 --pretreained_model unilm \
+--pretrained_model_path {path to ckpt of unilmv2} \
 --root_data_dir ./data/speedy_data/ \
 --num_hidden_layers 8 \
 --world_size 4 \
@@ -33,15 +34,13 @@ python train.py \
 --warmup_step 1000 \
 --batch_size 42 \
 --npratio 4 \
---epochs 3 \
 --beta_for_cache 0.002 \
 --max_step_in_cache 2 \
---news_attributes title \
 --savename speedyrec_mind 
 ```
-The model will be saved to `./save_ckpts/`, and validation will be conducted after each epoch.   
-The default pretrained model is unilm, you can download it from this link. For other pretrained model, you need set `--pretreained_model==others` and give a new path for `--pretreained_model_path`
-(like `roberta-base` and `microsoft/deberta-base`, which needs to be supported by transformers).
+The model will be saved to `./saved_models/`, and validation will be conducted after each epoch.   
+The default pretrained model is UniLM v2, and you can get it from [unilm repo](https://github.com/microsoft/unilm). For other pretrained model, you need set `--pretreained_model==others` and give a new path for `--pretreained_model_path`
+(like `roberta-base` and `microsoft/deberta-base`, which needs to be supported by [transformers](https://huggingface.co/transformers/model_doc/auto.html?highlight=automodel#transformers.AutoModel)).
 
 
 
@@ -49,13 +48,23 @@ The default pretrained model is unilm, you can download it from this link. For o
 Run prediction using saved checkpoint:
 ```
 python submission.py \
---pretrained_model_path ./unilm_ckpt/ \
+--pretrained_model_path {path to ckpt of unilmv2} \
 --pretreained_model unilm \
 --root_data_dir ./data/speedy_data/ \
 --num_hidden_layers 8 \
 --load_ckpt_name {path to your saved model} \
---news_attributes title \
 --batch_size 256 
 ```
-It will creates a zip file:`predciton.zip`, which can be submitted to the leaderboard of MIND directly.
+It will creates a zip file:`predciton.zip`, which can be submitted to the leaderboard of MIND directly.  
+We provide the trained model on MIND dataset, you can download it from this [link](https://drive.google.com/drive/folders/1Aw9Rgc9gyr_3eRU6_cksxq1uiEe7LYGb?usp=sharing) and run the prediction by following command:
+```
+python submission.py \
+--pretrained_model_path ./speedymind_ckpts \
+--pretreained_model unilm \
+--root_data_dir ./data/speedy_data/ \
+--num_hidden_layers 8 \
+--load_ckpt_name ./speedymind_ckpts \
+--batch_size 256 \
+--news_attributes title
+```
 
