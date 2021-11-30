@@ -95,6 +95,12 @@ class TuringNLRv3PreTrainedModel(BertPreTrainedModel):
 
         config = kwargs["config"]
         state_dict = kwargs["state_dict"]
+
+        for i in state_dict:
+            if 'news_encoder' in i:
+                print(i)
+                logging.info(i)
+
         # initialize new position embeddings (From Microsoft/UniLM)
         _k = 'bert.embeddings.position_embeddings.weight'
         if _k in state_dict:

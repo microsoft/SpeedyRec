@@ -157,7 +157,7 @@ def test_recall(args,news_index,news_embed):
     pad_news = np.zeros((1,news_embed.shape[-1]))
     news_embed = np.concatenate([news_embed,pad_news],0)
 
-    date_recall = list(range(1,32))
+    date_recall = list(range(1,3))
     data_dir = os.path.join(args.root_data_dir,'testdata/daily_recall')
 
     for date in date_recall:

@@ -75,9 +75,6 @@ def train(local_rank,
                 data_paths.sort()
 
         model = MLNR(args)
-        ckpt = torch.load('tnlr_8layers_step5_4gpu_notfixbatch_lr8e6-epoch-1-800000.pt')['model_state_dict']
-        print(ckpt.keys())
-        model.load_state_dict(ckpt, strict=False)
         model = model.to(device)
         rest_param = filter(
             lambda x: id(x) not in list(map(id, model.news_encoder.unicoder.parameters())),

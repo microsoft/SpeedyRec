@@ -1,7 +1,9 @@
 # SpeedyRec
 
+* News: We provide the [code and the trained checkpoint](speedy_mind/README.md) for MIND dataset. 
+
 ## Introduction
-Pytorch Implention for [Training large-scale news recommenders with pretrained language models in the loop](https://arxiv.org/pdf/2102.09268.pdf)
+Pytorch Implention for [Training large-scale news recommenders with pretrained language models in the loop](https://arxiv.org/pdf/2102.09268.pdf).
 ## Requirements
 ```bash
 pip install -r requirements.txt
