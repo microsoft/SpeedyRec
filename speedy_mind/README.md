@@ -11,11 +11,12 @@ scikit-learn==0.23
 ```
 
 ## Preparing Data
-Download data from MIND [link](https://msnews.github.io/) abd decompress these files.
+Download data from MIND [link](https://msnews.github.io/) and decompress these files. You will get three files:
+`MINDlarge_train`, `MINDlarge_dev`, and `MINDlarge_test`, then put them in the same folder, e.g., `./data/`. 
 
 Script `data_generation.py` can help you to generate the data files which meet the need of SpeedyRec:
 ```
-python data_generation.py --raw_data_path {path to your decompressed data}
+python data_generation.py --raw_data_path {./data or other path you save the decompressed data}
 ```
 The processed data will be saved to `./data/speedy_data/`.
 
@@ -56,7 +57,7 @@ python submission.py \
 --batch_size 256 
 ```
 It will creates a zip file:`predciton.zip`, which can be submitted to the leaderboard of MIND directly.  
-We provide the trained model on MIND dataset, you can download it from this [link](https://drive.google.com/drive/folders/1Aw9Rgc9gyr_3eRU6_cksxq1uiEe7LYGb?usp=sharing) and run the prediction by following command:
+You can download the model trained by us from this [link](https://drive.google.com/drive/folders/1Aw9Rgc9gyr_3eRU6_cksxq1uiEe7LYGb?usp=sharing) and run the prediction by following command:
 ```
 python submission.py \
 --pretrained_model_path ./speedymind_ckpts \
@@ -67,4 +68,13 @@ python submission.py \
 --batch_size 256 \
 --news_attributes title
 ```
+
+python submission.py \
+--pretrained_model_path ../../speedy_share/speedy_mind/speedymind_ckpts \
+--pretreained_model unilm \
+--root_data_dir ./data/speedy_data/ \
+--num_hidden_layers 8 \
+--load_ckpt_name ./speedymind_ckpts \
+--batch_size 256 \
+--news_attributes title
 

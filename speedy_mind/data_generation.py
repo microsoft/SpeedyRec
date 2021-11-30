@@ -95,6 +95,10 @@ def get_arguments():
 
 def main():
     args = get_arguments()
+    assert os.path.exists(os.path.join(args.raw_data_path, 'MINDlarge_train'))
+    assert os.path.exists(os.path.join(args.raw_data_path, 'MINDlarge_dev'))
+    assert os.path.exists(os.path.join(args.raw_data_path, 'MINDlarge_test'))
+
     Path('./data/speedy_data/').mkdir(parents=True, exist_ok=True)
     generate_news(args.raw_data_path)
     generate_traindata(args.raw_data_path, file_num=args.file_num_for_traindata)
