@@ -157,7 +157,7 @@ def get_news_feature(args, mode='train', category_dict=None, subcategory_dict=No
         news_info = NewsInfo(args, mode, category_dict, subcategory_dict)
 
     directory, model_name = os.path.split(args.pretrained_model_path)
-    cache_file = f'{args.root_data_dir}/{mode}/{model_name}_preprocessed_docs.pkl'
+    cache_file = f'{args.root_data_dir}/{mode}/{model_name}_{"+".join(args.news_attributes)}_preprocessed_docs.pkl'
     if os.path.exists(cache_file):
         logging.info(f'Load cache from {cache_file}')
         with open(cache_file, 'rb') as f:

@@ -58,7 +58,7 @@ python submission.py \
 ```
 It will creates a zip file:`predciton.zip`, which can be submitted to the leaderboard of MIND directly.  
 
-## Training and prediction based on our trained model
+## Training and prediction based on our trained model 
 You can download the config and the model trained by us from this [link](https://drive.google.com/drive/folders/1Aw9Rgc9gyr_3eRU6_cksxq1uiEe7LYGb?usp=sharing) and save them in `./speedymind_ckpts`.  
 - Prediction  
 You can run the prediction by following command:
