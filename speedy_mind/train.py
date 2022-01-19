@@ -78,7 +78,7 @@ def train(local_rank,
         if 'speedymind_ckpts' in args.pretrained_model_path:
             ckpt = torch.load(os.path.join(args.pretrained_model_path, 'pytorch_model.bin'))
             model.load_state_dict(ckpt['model_state_dict'])
-        
+
         model = model.to(device)
         rest_param = filter(
             lambda x: id(x) not in list(map(id, model.news_encoder.unicoder.parameters())),
@@ -237,9 +237,6 @@ def train(local_rank,
                             'subcategory_dict': news_info.subcategory_dict,
                         }, ckpt_path)
                     logging.info(f"Model saved to {ckpt_path}")
-
-                # if global_step == 5:
-                #     break
 
             logging.info('epoch:{}, time:{}, encode_num:{}'.format(ep + 1, time.time() - start_time-test_time, encode_num))
             # save model after an epoch
